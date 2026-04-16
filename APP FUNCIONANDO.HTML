@@ -1,0 +1,2026 @@
+<!DOCTYPE html>
+<html lang="pt-BR"> <!-- A classe 'dark' será adicionada dinamicamente via JS -->
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cifra & Play</title>
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+    <script>
+        // Script para evitar o "flash" do tema claro (FOUC)
+        // Lógica restaurada para verificar o tema no localStorage.
+        (() => {
+            const theme = localStorage.getItem('appTheme') || 'dark'; // Padrão é escuro
+            if (theme === 'dark') {
+                document.documentElement.classList.add('dark');
+            } else {
+                document.documentElement.classList.remove('dark');
+            }
+        })();
+    </script>
+    <!-- CORREÇÃO: O script principal do Tailwind agora vem ANTES da configuração -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        // Agora o objeto 'tailwind' existe e pode ser configurado.
+        tailwind.config = {
+            darkMode: 'class', // Habilita o modo escuro baseado em classe
+            content: ["./*.html"],
+            theme: {
+                extend: {},
+            },
+            plugins: [],
+        }
+    </script>
+    <style>
+        /* CSS restaurado para suportar ambos os temas */
+        :root {
+            --bg-track: #f3f4f6;
+            --bg-thumb: #9ca3af;
+            --bg-thumb-hover: #6b7280;
+        }
+
+        html.dark {
+            --bg-track: #1e293b;
+            /* slate-800 */
+            --bg-thumb: #475569;
+            /* slate-600 */
+            --bg-thumb-hover: #64748b;
+            /* slate-500 */
+        }
+
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-track);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--bg-thumb);
+            border-radius: 10px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--bg-thumb-hover);
+        }
+
+        /* Cor da cifra para ambos os temas */
+        .chord {
+            color: #ca8a04;
+            font-weight: bold;
+        }
+
+        /* Cor padrão (claro) */
+        html.dark .chord {
+            color: #facc15;
+        }
+
+        /* Cor para modo escuro */
+
+        [contenteditable][placeholder]:empty:before {
+            content: attr(placeholder);
+            color: #6b7280;
+            pointer-events: none;
+            display: block;
+        }
+
+        [contenteditable]:empty:before {
+            content: attr(placeholder);
+            color: #aaa;
+            pointer-events: none;
+        }
+
+        .song-item {
+            border-radius: 12px;
+            margin-bottom: 4px;
+            border: 1px solid transparent;
+        }
+
+        .song-item:hover {
+            border-color: rgba(79, 70, 229, 0.3);
+        }
+
+        .song-item.active {
+            background: linear-gradient(135deg, #6366f1, #4f46e5);
+            color: white;
+            box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
+            border-color: transparent;
+        }
+
+        .song-item.active .text-gray-400, 
+        .song-item.active .text-gray-500 {
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        .repertoire-item {
+            border-radius: 12px;
+            margin-bottom: 4px;
+            transition: all 0.2s;
+        }
+
+        .repertoire-item.active {
+            background: linear-gradient(135deg, #10b981, #059669);
+            color: white;
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+        }
+
+        .repertoire-item .ph-play-circle,
+        .repertoire-item .ph-monitor-play,
+        .repertoire-item .ph-pencil-simple,
+        .repertoire-item .ph-trash {
+            opacity: 0.6;
+            transition: opacity 0.2s, transform 0.2s;
+        }
+
+        .repertoire-item:hover .ph-play-circle,
+        .repertoire-item:hover .ph-monitor-play,
+        .repertoire-item:hover .ph-pencil-simple,
+        .repertoire-item:hover .ph-trash {
+            opacity: 1;
+        }
+
+        .repertoire-item button:hover {
+            transform: scale(1.1);
+        }
+
+        .ghost {
+            opacity: 0.2;
+            background: #6366f1;
+            border: 2px dashed #6366f1;
+        }
+
+        .control-btn {
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .control-btn:active {
+            transform: scale(0.95);
+        }
+
+        /* Estilo para exibição de cifras em modo palco */
+        .chord {
+            color: #22c55e;
+            font-weight: bold;
+            font-family: 'JetBrains Mono', 'Fira Code', monospace;
+            background: rgba(34, 197, 94, 0.1);
+            padding: 0 2px;
+            border-radius: 4px;
+        }
+
+        html.dark .chord {
+            color: #4ade80;
+        }
+
+        .modal-overlay {
+            transition: opacity 0.3s ease;
+        }
+
+        .modal-container {
+            transition: transform 0.3s ease;
+        }
+
+        #setlist-lyrics-view {
+            transition: font-size 0.2s ease-in-out;
+            column-gap: 4rem;
+            overflow-y: hidden !important; 
+            scroll-behavior: smooth;
+            scroll-snap-type: y mandatory;
+        }
+
+        /* Melhoria para evitar linhas cortadas */
+        .lyric-line {
+            display: block;
+            margin-bottom: 0.1em;
+            scroll-snap-align: start;
+        }
+
+        #setlist-page-indicator {
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+            padding: 10px;
+            background: linear-gradient(to top, rgba(0,0,0,0.5), transparent);
+            pointer-events: none;
+        }
+
+        .page-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.2);
+            transition: all 0.3s ease;
+        }
+
+        .page-dot.active {
+            background: #6366f1;
+            transform: scale(1.4);
+            box-shadow: 0 0 8px rgba(99,102,241,0.6);
+        }
+
+        .control-btn.active {
+            background-color: #4f46e5;
+            /* indigo-600 */
+            color: white;
+        }
+
+        /* ========= MOBILE ========= */
+        @media (max-width: 767px) {
+            #mobile-tab-bar {
+                display: flex !important;
+            }
+
+            aside {
+                display: none;
+            }
+
+            aside.mobile-active {
+                display: flex !important;
+            }
+
+            #details-view.mobile-active {
+                display: flex !important;
+            }
+
+            #welcome-view {
+                display: none !important;
+            }
+        }
+
+        @media (min-width: 768px) {
+            #mobile-tab-bar {
+                display: none !important;
+            }
+
+            aside {
+                display: flex !important;
+            }
+        }
+
+        .mobile-tab {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 0.4rem 0;
+            font-size: 0.65rem;
+            gap: 2px;
+            border: none;
+            background: transparent;
+            cursor: pointer;
+            transition: color 0.15s;
+            color: #64748b;
+        }
+
+        .mobile-tab.active {
+            color: #6366f1;
+        }
+
+        .mobile-tab i {
+            font-size: 1.3rem;
+        }
+
+        /* Garantir que as opções do select fiquem escuras no modo dark */
+        html.dark select option {
+            background-color: #1e293b; /* slate-800 */
+            color: #e2e8f0; /* slate-200 */
+        }
+    </style>
+</head>
+<!-- Classes do body restauradas para suportar ambos os temas com o prefixo dark: -->
+
+<body
+    class="bg-slate-100 dark:bg-slate-900 text-slate-800 dark:text-slate-200 font-sans antialiased h-screen overflow-hidden flex flex-col">
+
+    <!-- Tela de Licença -->
+    <div id="license-overlay"
+        class="fixed inset-0 bg-slate-300 bg-opacity-80 dark:bg-gray-900 dark:bg-opacity-95 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="w-full max-w-md bg-white dark:bg-slate-800 p-8 rounded-lg shadow-xl text-center">
+            <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">Ativação Necessária</h2>
+            <p id="license-message" class="text-slate-600 dark:text-gray-400 mb-6">Por favor, insira sua chave de
+                licença para ativar o aplicativo.</p>
+            <textarea id="licenseInput"
+                class="w-full h-24 bg-slate-100 dark:bg-gray-700 text-slate-800 dark:text-gray-200 p-2 rounded border border-slate-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+                placeholder="Cole sua chave de licença aqui..."></textarea>
+            <div class="mt-4 flex gap-4">
+                <button id="cancelActivationBtn"
+                    class="w-1/2 bg-gray-500 hover:bg-gray-600 text-white font-bold py-3 px-4 rounded-lg">Voltar</button>
+                <button id="activateBtn"
+                    class="w-1/2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-lg">Ativar</button>
+            </div>
+            <p id="license-error" class="text-red-500 text-sm mt-4 h-4"></p>
+
+            <div class="mt-8 border-t border-slate-200 dark:border-gray-700 pt-4">
+                <p class="text-slate-500 dark:text-gray-400 text-sm">Para adquirir uma chave de licença, entre em
+                    contato:</p>
+                <div class="flex justify-center items-center gap-6 mt-3 text-slate-600 dark:text-gray-300">
+                    <a href="mailto:robinpahbass@gmail.com" class="hover:text-indigo-600 dark:hover:text-white"
+                        title="E-mail"><i class="ph-bold ph-envelope-simple text-3xl"></i></a>
+                    <a href="https://wa.me/5549988895250" target="_blank"
+                        class="hover:text-indigo-600 dark:hover:text-white" title="WhatsApp"><i
+                            class="ph-bold ph-whatsapp-logo text-3xl"></i></a>
+                    <a href="https://www.instagram.com/robii_cardoso/" target="_blank"
+                        class="hover:text-indigo-600 dark:hover:text-white" title="Instagram"><i
+                            class="ph-bold ph-instagram-logo text-3xl"></i></a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="main-view" class="hidden h-screen flex flex-col overflow-hidden">
+
+        <!-- Header compacto -->
+        <header
+            class="flex items-center justify-between px-4 py-2 bg-slate-200 dark:bg-slate-800 border-b border-slate-300 dark:border-slate-700 flex-shrink-0 shadow-sm">
+            <h1 class="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <i class="ph-bold ph-music-notes text-indigo-500"></i>
+                Cifra &amp; Play
+            </h1>
+            <div class="flex items-center gap-4">
+                <button id="listsBtn"
+                    class="text-slate-600 dark:text-slate-300 hover:text-indigo-500 dark:hover:text-indigo-400 transition-colors text-sm font-medium">Listas</button>
+                <button id="backupBtn"
+                    class="text-slate-600 dark:text-slate-300 hover:text-indigo-500 dark:hover:text-indigo-400 transition-colors text-sm font-medium">Backup</button>
+                <button id="aboutBtn"
+                    class="text-slate-600 dark:text-slate-300 hover:text-indigo-500 dark:hover:text-indigo-400 transition-colors text-sm font-medium">Sobre</button>
+                <button id="theme-toggle-btn"
+                    class="text-slate-600 dark:text-slate-300 hover:text-indigo-500 dark:hover:text-indigo-400 transition-colors">
+                    <i id="theme-icon" class="ph-bold ph-sun text-lg"></i>
+                </button>
+                <input type="file" id="folderInput" webkitdirectory directory multiple class="hidden">
+                <input type="file" id="lyricsInput" multiple accept=".txt" class="hidden">
+                <input type="file" id="importBackupInput" accept=".json" class="hidden">
+            </div>
+        </header>
+
+        <!-- Mobile bottom nav -->
+        <nav id="mobile-tab-bar"
+            class="hidden flex-shrink-0 border-t border-slate-300 dark:border-slate-700 bg-slate-200 dark:bg-slate-800"
+            style="display:none;">
+            <button class="mobile-tab active" id="tab-library" onclick="switchMobileTab('library')">
+                <i class="ph-bold ph-music-notes"></i>
+                <span>Biblioteca</span>
+            </button>
+            <button class="mobile-tab" id="tab-editor" onclick="switchMobileTab('editor')">
+                <i class="ph-bold ph-pencil-simple-line"></i>
+                <span>Editor</span>
+            </button>
+        </nav>
+
+        <!-- Conteúdo principal: preenche o espaço restante sem scroll -->
+        <main class="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-12 gap-0 overflow-hidden">
+
+            <!-- Coluna da Esquerda -->
+            <aside id="sidebar-panel"
+                class="md:col-span-4 lg:col-span-3 bg-slate-200 dark:bg-slate-800 flex flex-col overflow-hidden border-r border-slate-300 dark:border-slate-700 p-3 mobile-active">
+                <div class="grid grid-cols-2 gap-2 mb-2 flex-shrink-0">
+                    <button id="addSongBtn" title="Criar nova música"
+                        class="bg-green-600 hover:bg-green-700 active:scale-95 text-white font-bold py-2 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-all duration-150 text-sm shadow-sm"><i
+                            class="ph-bold ph-music-note-plus"></i> Nova Música</button>
+                    <button id="selectFolderBtn" title="Vincular pasta de áudios MP3"
+                        class="bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-bold py-2 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-all duration-150 text-sm shadow-sm"><i
+                            class="ph-bold ph-folder-open"></i> Carregar Áudios</button>
+                </div>
+                <button id="importLyricsBtn" title="Importar letras de arquivos .txt"
+                    class="w-full bg-purple-600 hover:bg-purple-700 active:scale-95 text-white font-bold py-1.5 px-4 rounded-lg flex items-center justify-center gap-1.5 transition-all duration-150 mb-3 flex-shrink-0 text-sm shadow-sm"><i
+                        class="ph-bold ph-upload-simple"></i> Importar Letras (.txt)</button>
+
+                <!-- Biblioteca -->
+                <div id="libraryHeader" class="flex justify-between items-center flex-shrink-0 mb-1">
+                    <h2
+                        class="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                        <i class="ph ph-list-music"></i> Biblioteca
+                    </h2>
+                    <button id="backToLibraryBtn"
+                        class="hidden text-xs text-sky-500 dark:text-sky-400 hover:text-sky-700 dark:hover:text-sky-300">Ver
+                        Todas</button>
+                </div>
+                <div id="songListContainer"
+                    class="flex-1 min-h-0 overflow-y-auto bg-white dark:bg-slate-900 rounded-md p-1 mb-3">
+                    <ul id="songList"></ul>
+                </div>
+
+                <!-- Repertórios -->
+                <div class="flex-shrink-0">
+                    <h2
+                        class="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 flex items-center gap-1 mb-1">
+                        <i class="ph ph-books"></i> Repertórios
+                    </h2>
+                    <div class="flex gap-2 mb-2 items-center">
+                        <input type="text" id="repertoireName" placeholder="Novo repertório..."
+                            class="flex-grow bg-slate-300 dark:bg-slate-700 border border-slate-400 dark:border-slate-600 rounded-md px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800 dark:text-slate-200 placeholder-slate-500 dark:placeholder-slate-400">
+                        <button id="addRepertoireBtn"
+                            class="bg-green-600 hover:bg-green-700 text-white font-bold p-2 rounded-md transition-colors duration-200 flex-shrink-0"><i
+                                class="ph-bold ph-plus"></i></button>
+                    </div>
+                </div>
+                <div id="repertoireListContainer"
+                    class="flex-1 min-h-0 overflow-y-auto bg-white dark:bg-slate-900 rounded-md p-1">
+                    <ul id="repertoireList"></ul>
+                </div>
+            </aside>
+
+            <!-- Coluna da Direita -->
+            <section id="details-view"
+                class="md:col-span-8 lg:col-span-9 flex flex-col overflow-hidden bg-slate-100 dark:bg-slate-900 p-4 hidden">
+                <!-- Novo Cabeçalho Moderno -->
+                <div class="flex-shrink-0 space-y-4 mb-4">
+                    <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                        <input type="text" id="songTitleInput" placeholder="Nome da Música"
+                            class="text-3xl font-black bg-transparent border-none focus:ring-0 focus:outline-none p-0 w-full text-slate-900 dark:text-white placeholder-slate-400">
+                        
+                        <div class="flex items-center gap-2 self-end lg:self-center">
+                            <span id="saveStatus"
+                                class="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1 transition-opacity duration-300 opacity-0 mr-2">
+                                <i class="ph-bold ph-check-circle text-green-500"></i> Salvo
+                            </span>
+                            <button id="exportLyricsBtn"
+                                class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-xl flex items-center gap-2 transition-all duration-200 text-sm shadow-md hover:shadow-indigo-500/20 active:scale-95"
+                                title="Salvar letra como .txt">
+                                <i class="ph-bold ph-download-simple"></i> <span class="hidden sm:inline">Exportar</span>
+                            </button>
+                            <button id="deleteSongBtn"
+                                class="bg-red-500/10 hover:bg-red-500 text-red-600 hover:text-white font-bold py-2 px-4 rounded-xl flex items-center gap-2 transition-all duration-200 text-sm border border-red-500/20 hover:border-red-500 active:scale-95"
+                                title="Excluir Música">
+                                <i class="ph-bold ph-trash"></i> <span class="hidden sm:inline">Excluir</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 bg-slate-200/40 dark:bg-slate-800/40 p-4 rounded-2xl border border-slate-300/50 dark:border-slate-700/50 backdrop-blur-sm">
+                        <div class="flex flex-col gap-1.5">
+                            <div class="flex items-center justify-between ml-1">
+                                <label class="text-[10px] uppercase font-bold tracking-wider text-slate-500 dark:text-slate-400">Artista</label>
+                                <button onclick="openModal(listsModal)" class="text-indigo-500 hover:text-indigo-400 transition-colors" title="Gerenciar Artistas">
+                                    <i class="ph-bold ph-plus-circle"></i>
+                                </button>
+                            </div>
+                            <select id="songArtistSelect"
+                                class="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-all text-slate-800 dark:text-slate-200"></select>
+                        </div>
+                        <div class="flex flex-col gap-1.5">
+                            <div class="flex items-center justify-between ml-1">
+                                <label class="text-[10px] uppercase font-bold tracking-wider text-slate-500 dark:text-slate-400">Tom</label>
+                                <button onclick="openModal(listsModal)" class="text-indigo-500 hover:text-indigo-400 transition-colors" title="Gerenciar Tons">
+                                    <i class="ph-bold ph-plus-circle"></i>
+                                </button>
+                            </div>
+                            <select id="songKeySelect"
+                                class="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-all text-slate-800 dark:text-slate-200"></select>
+                        </div>
+                        <div class="flex flex-col gap-1.5">
+                            <div class="flex items-center justify-between ml-1">
+                                <label class="text-[10px] uppercase font-bold tracking-wider text-slate-500 dark:text-slate-400">Estilo</label>
+                                <button onclick="openModal(listsModal)" class="text-indigo-500 hover:text-indigo-400 transition-colors" title="Gerenciar Estilos">
+                                    <i class="ph-bold ph-plus-circle"></i>
+                                </button>
+                            </div>
+                            <select id="songStyleSelect"
+                                class="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-all text-slate-800 dark:text-slate-200"></select>
+                        </div>
+                        <div class="flex flex-col gap-1.5">
+                            <label class="text-[10px] uppercase font-bold tracking-wider text-slate-500 dark:text-slate-400 ml-1">Áudio de Apoio</label>
+                            <audio id="audioPlayer" controls class="w-full h-[38px]"></audio>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex items-center justify-between mb-1 flex-shrink-0">
+                    <h4
+                        class="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                        <i class="ph ph-microphone-stage"></i> Letra e Cifras
+                    </h4>
+                </div>
+                <div id="lyricsEditor" contenteditable="true"
+                    class="flex-1 min-h-0 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 p-4 rounded-md border border-slate-300 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 overflow-y-auto"
+                    placeholder="Escreva a letra e as cifras aqui. Use [C] para acordes..."></div>
+            </section>
+
+            <section id="welcome-view"
+                class="md:col-span-8 lg:col-span-9 flex flex-col items-center justify-center text-center bg-slate-100 dark:bg-slate-900 p-6">
+                <i
+                    class="ph-light ph-music-notes-simple text-6xl md:text-8xl text-slate-400 dark:text-slate-600 mb-4"></i>
+                <h2 class="text-2xl font-bold text-slate-600 dark:text-slate-400">Bem-vindo ao Cifra &amp; Play!</h2>
+                <p class="text-slate-500 dark:text-slate-500 mt-2">Use <span
+                        class="font-bold text-green-600 dark:text-green-400">"+ Música"</span> para criar uma nova letra
+                    ou <span class="font-bold text-indigo-500 dark:text-indigo-400">"Importar"</span> para carregar seus
+                    arquivos.</p>
+            </section>
+        </main>
+    </div>
+
+    <!-- Editor de Repertório -->
+    <section id="repertoire-editor-view" class="hidden fixed inset-0 bg-slate-100 dark:bg-slate-900 p-4 md:p-8 z-20">
+        <div class="container mx-auto max-w-7xl h-full flex flex-col">
+            <div class="flex justify-between items-center mb-4 flex-shrink-0">
+                <h2 class="text-2xl md:text-3xl font-bold">Editor de Repertório: <span id="editorRepertoireName"
+                        class="text-green-500 dark:text-green-400"></span></h2>
+                <button id="closeRepertoireEditorBtn"
+                    class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><i
+                        class="ph-bold ph-x"></i> Fechar</button>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 flex-grow min-h-0">
+                <div class="bg-slate-200 dark:bg-slate-800 p-4 rounded-lg flex flex-col">
+                    <h3 class="text-xl font-semibold mb-3 flex-shrink-0">Sequência das Músicas (<span
+                            id="repertoireSongCount">0</span>)</h3>
+                    <div class="overflow-y-auto flex-grow">
+                        <ul id="repertoireSongListEditor" class="space-y-2"></ul>
+                    </div>
+                </div>
+                <div class="bg-slate-200 dark:bg-slate-800 p-4 rounded-lg flex flex-col">
+                    <h3 class="text-xl font-semibold mb-3 flex-shrink-0">Minhas Músicas</h3>
+                    <div class="flex gap-2 mb-3 flex-shrink-0">
+                        <input type="text" id="libraryFilterInput" placeholder="Filtrar por nome ou artista..."
+                            class="w-2/3 bg-white dark:bg-slate-700 p-2 rounded-md text-sm text-slate-800 dark:text-slate-200 placeholder-slate-500 dark:placeholder-slate-400">
+                        <select id="styleFilterSelect"
+                            class="w-1/3 bg-white dark:bg-slate-700 p-2 rounded-md text-sm text-slate-800 dark:text-slate-200"></select>
+                    </div>
+                    <div class="overflow-y-auto flex-grow">
+                        <ul id="editorLibraryList" class="space-y-2"></ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Modo Palco (Setlist View) -->
+    <section id="setlist-view"
+        class="hidden fixed inset-0 bg-white dark:bg-black text-black dark:text-white z-30 flex flex-col overflow-hidden">
+        <!-- Header compacto em uma única linha -->
+        <header
+            class="flex items-center gap-3 px-4 py-2 border-b border-slate-200 dark:border-slate-800 flex-shrink-0 bg-slate-50 dark:bg-slate-900 relative">
+            <!-- Info da música atual -->
+            <div class="flex-1 min-w-0">
+                <div class="flex items-baseline gap-2 min-w-0">
+                    <h3 id="setlist-current-title"
+                        class="font-bold text-base text-green-600 dark:text-green-400 truncate"></h3>
+                    <span id="setlist-current-artist"
+                        class="text-sm text-slate-500 dark:text-slate-400 truncate hidden sm:inline"></span>
+                    <span id="setlist-current-key"
+                        class="text-xs text-slate-400 dark:text-slate-500 flex-shrink-0"></span>
+                </div>
+            </div>
+            <!-- Navegação: Anterior / Progresso / Próximo -->
+            <div class="flex items-center gap-1 flex-shrink-0">
+                <button id="prevSongBtn"
+                    class="flex items-center gap-1 px-2 py-1 rounded bg-slate-200 dark:bg-slate-700 hover:bg-indigo-500 hover:text-white dark:hover:bg-indigo-600 control-btn text-xs font-semibold transition-colors"
+                    title="Música anterior (←)">
+                    <i class="ph-bold ph-caret-left"></i> <span class="hidden sm:inline">Ant.</span>
+                </button>
+                <div class="flex flex-col items-center min-w-[56px]">
+                    <p id="setlist-progress"
+                        class="text-xs font-bold text-slate-600 dark:text-slate-300 whitespace-nowrap leading-none"></p>
+                    <button id="returnToSetlistBtn"
+                        class="hidden bg-yellow-400 text-black font-bold px-1.5 py-0.5 rounded text-xs mt-0.5">↩
+                        Rep.</button>
+                </div>
+                <button id="nextSongBtn"
+                    class="flex items-center gap-1 px-2 py-1 rounded bg-slate-200 dark:bg-slate-700 hover:bg-indigo-500 hover:text-white dark:hover:bg-indigo-600 control-btn text-xs font-semibold transition-colors"
+                    title="Próxima música (→)">
+                    <span class="hidden sm:inline">Próx.</span> <i class="ph-bold ph-caret-right"></i>
+                </button>
+            </div>
+            <!-- Controles -->
+            <div class="flex items-center gap-1 flex-shrink-0">
+                <button id="setlistSearchBtn"
+                    class="p-1.5 rounded bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 control-btn"
+                    title="Buscar música (Ctrl+F)"><i class="ph-bold ph-magnifying-glass"></i></button>
+                <!-- Grupo Zoom -->
+                <div class="flex items-center rounded overflow-hidden border border-slate-300 dark:border-slate-600">
+                    <button id="zoomOutBtn"
+                        class="px-2 py-1 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 control-btn border-r border-slate-300 dark:border-slate-600 font-bold leading-none"
+                        title="Fonte menor (A-)">
+                        <span class="text-sm">A</span><span class="text-[10px] align-bottom">−</span>
+                    </button>
+                    <span id="zoomLevelLabel"
+                        class="px-2 text-xs font-mono font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 select-none">100%</span>
+                    <button id="zoomResetBtn"
+                        class="px-2 py-1 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 control-btn border-x border-slate-300 dark:border-slate-600"
+                        title="Restaurar tamanho padrão">
+                        <i class="ph-bold ph-arrow-counter-clockwise text-xs"></i>
+                    </button>
+                    <button id="zoomInBtn"
+                        class="px-2 py-1 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 control-btn font-bold leading-none"
+                        title="Fonte maior (A+)">
+                        <span class="text-base">A</span><span class="text-[10px] align-bottom">+</span>
+                    </button>
+                </div>
+                <!-- Grupo Colunas -->
+                <div class="flex items-center rounded overflow-hidden border border-slate-300 dark:border-slate-600">
+                    <button id="column-1-btn"
+                        class="px-2 py-1 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 control-btn border-r border-slate-300 dark:border-slate-600 text-xs font-semibold"
+                        title="1 Coluna">1col</button>
+                    <button id="column-2-btn"
+                        class="px-2 py-1 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 control-btn text-xs font-semibold"
+                        title="2 Colunas">2col</button>
+                </div>
+                <button id="closeSetlistBtn"
+                    class="flex items-center gap-1 px-2 py-1 rounded bg-red-600 hover:bg-red-700 text-white control-btn text-xs font-semibold"
+                    title="Fechar modo palco (Esc)">
+                    <i class="ph-bold ph-x"></i><span class="hidden sm:inline">Fechar</span>
+                </button>
+            </div>
+            <!-- Próxima música -->
+            <div
+                class="hidden lg:block text-right flex-shrink-0 border-l border-slate-200 dark:border-slate-700 pl-3 min-w-0 max-w-[180px]">
+                <p class="text-xs text-slate-400">Próxima</p>
+                <h4 id="setlist-next-title" class="text-sm font-semibold text-slate-500 dark:text-slate-400 truncate">
+                </h4>
+                <p id="setlist-next-artist" class="text-xs text-slate-400 truncate"></p>
+            </div>
+            <!-- Busca dropdown -->
+            <div class="absolute top-full left-0 right-0 z-10">
+                <div id="setlist-search-container"
+                    class="hidden p-3 bg-slate-100 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 shadow-lg">
+                    <input type="text" id="setlist-search-input"
+                        class="w-full bg-white dark:bg-slate-700 p-2 rounded-md text-sm"
+                        placeholder="Buscar música na biblioteca...">
+                    <ul id="setlist-search-results" class="mt-2 max-h-60 overflow-y-auto"></ul>
+                </div>
+            </div>
+        </header>
+        <div id="setlist-lyrics-view" class="flex-1 min-h-0 overflow-y-auto p-6 md:p-10"></div>
+        <!-- Novo Indicador de Páginas -->
+        <div id="setlist-page-indicator" class="flex-shrink-0"></div>
+    </section>
+
+    <!-- Teleprompter View -->
+    <section id="teleprompter-view" class="hidden fixed inset-0 z-40 flex flex-col overflow-hidden"
+        style="background:#0a0a0f;">
+
+        <!-- Overlay: Letra da Música (abre ao clicar em uma música) -->
+        <div id="tp-song-overlay" class="hidden absolute inset-0 z-20 flex flex-col" style="background:#0a0a0f;">
+            <header class="flex items-center gap-3 px-5 py-3 flex-shrink-0"
+                style="background:rgba(0,0,0,0.7);border-bottom:1px solid rgba(255,255,255,0.08);">
+                <button onclick="closeTpSongView()"
+                    class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold text-sm transition-all"
+                    style="background:rgba(255,255,255,0.1);color:#e2e8f0;" title="Voltar ao Teleprompter">
+                    <i class="ph-bold ph-arrow-left"></i> <span>Voltar</span>
+                </button>
+                <div class="flex-1 min-w-0">
+                    <p id="tp-song-view-title" class="font-bold text-white truncate text-base leading-none"></p>
+                    <p id="tp-song-view-meta" class="text-xs text-slate-400 mt-0.5 truncate"></p>
+                </div>
+            </header>
+            <div id="tp-song-view-lyrics" class="flex-1 min-h-0 overflow-y-auto px-6 py-5 text-white"
+                style="font-size:clamp(1rem,2.5vw,1.2rem);line-height:1.9;white-space:pre-wrap;font-family:monospace;">
+            </div>
+        </div>
+        <!-- Barra superior -->
+        <header class="flex items-center justify-between px-5 py-2 flex-shrink-0"
+            style="background:rgba(0,0,0,0.6);border-bottom:1px solid rgba(255,255,255,0.06);">
+            <div class="flex items-center gap-3">
+                <i class="ph-bold ph-monitor-play text-indigo-400"></i>
+                <span class="text-xs font-bold uppercase tracking-widest text-indigo-300">Teleprompter</span>
+                <span id="tp-progress" class="text-xs text-slate-400 font-mono"></span>
+                <!-- Colunas -->
+                <div class="flex items-center rounded overflow-hidden border border-slate-600 ml-2">
+                    <button id="tp-col1-btn" class="px-2 py-0.5 text-xs font-bold transition-colors"
+                        style="background:rgba(99,102,241,0.8);color:#fff;" title="1 Coluna">1col</button>
+                    <button id="tp-col2-btn" class="px-2 py-0.5 text-xs font-bold transition-colors"
+                        style="background:rgba(255,255,255,0.07);color:#94a3b8;border-left:1px solid rgba(255,255,255,0.12);"
+                        title="2 Colunas">2col</button>
+                </div>
+            </div>
+            <button id="closeTeleprompterBtn"
+                class="flex items-center gap-1.5 px-3 py-1 bg-red-600 hover:bg-red-700 rounded text-sm font-semibold text-white transition-colors">
+                <i class="ph-bold ph-x"></i> Fechar
+            </button>
+        </header>
+        <!-- Conteúdo central -->
+        <div class="flex-1 min-h-0 flex flex-col items-center justify-start px-8 pt-10 pb-6 overflow-y-auto">
+            <div id="tp-content" class="text-center w-full max-w-5xl"></div>
+        </div>
+        <!-- Rodapé com navegação -->
+        <footer class="flex items-center justify-between px-6 py-3 flex-shrink-0"
+            style="background:rgba(0,0,0,0.6);border-top:1px solid rgba(255,255,255,0.06);">
+            <button id="tp-prev-btn"
+                class="flex items-center gap-2 px-5 py-2 rounded-lg font-semibold text-sm transition-all text-slate-200 hover:text-white"
+                style="background:rgba(255,255,255,0.08);">
+                <i class="ph-bold ph-caret-left"></i> Anterior
+            </button>
+            <div id="tp-dots" class="flex items-center gap-2"></div>
+            <button id="tp-next-btn"
+                class="flex items-center gap-2 px-5 py-2 rounded-lg font-semibold text-sm transition-all text-slate-200 hover:text-white"
+                style="background:rgba(255,255,255,0.08);">
+                Próximo <i class="ph-bold ph-caret-right"></i>
+            </button>
+        </footer>
+    </section>
+
+    <!-- Modal de Gerenciar Listas -->
+    <div id="listsModal"
+        class="modal-overlay fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center p-4 hidden z-50 opacity-0">
+        <div
+            class="modal-container bg-slate-200 dark:bg-slate-800 w-full max-w-4xl rounded-lg shadow-xl p-6 transform -translate-y-10">
+            <div class="flex justify-between items-center border-b border-slate-300 dark:border-slate-700 pb-3 mb-4">
+                <h2 class="text-2xl font-bold flex items-center gap-2"><i class="ph-bold ph-list-bullets"></i> Gerenciar
+                    Listas</h2>
+                <button id="closeListsBtn"
+                    class="text-slate-500 dark:text-slate-400 hover:text-black dark:hover:text-white"><i
+                        class="ph-bold ph-x text-2xl"></i></button>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div id="artists-list-manager"></div>
+                <div id="keys-list-manager"></div>
+                <div id="styles-list-manager"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Backup -->
+    <div id="backupModal"
+        class="modal-overlay fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center p-4 hidden z-50 opacity-0">
+        <div
+            class="modal-container bg-slate-200 dark:bg-slate-800 w-full max-w-md rounded-lg shadow-xl p-6 transform -translate-y-10">
+            <div class="flex justify-between items-center border-b border-slate-300 dark:border-slate-700 pb-3 mb-4">
+                <h2 class="text-2xl font-bold flex items-center gap-2"><i class="ph-bold ph-database"></i> Backup e
+                    Restauração</h2>
+                <button id="closeBackupBtn"
+                    class="text-slate-500 dark:text-slate-400 hover:text-black dark:hover:text-white"><i
+                        class="ph-bold ph-x text-2xl"></i></button>
+            </div>
+            <div class="bg-white dark:bg-slate-900 p-4 rounded-lg text-sm text-slate-600 dark:text-slate-400">
+                <p class="mb-3">Salve todos os seus dados em um único arquivo. Importe este arquivo para restaurar seus
+                    dados em qualquer computador.</p>
+                <div class="flex gap-4">
+                    <button id="exportAllDataBtn"
+                        class="w-1/2 bg-sky-600 hover:bg-sky-700 text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center gap-2"><i
+                            class="ph-bold ph-download-simple"></i> Exportar Tudo</button>
+                    <button id="importAllDataBtn"
+                        class="w-1/2 bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center gap-2"><i
+                            class="ph-bold ph-upload-simple"></i> Importar Tudo</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Sobre -->
+    <div id="aboutModal"
+        class="modal-overlay fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center p-4 hidden z-50 opacity-0">
+        <div
+            class="modal-container bg-slate-200 dark:bg-slate-800 w-full max-w-2xl rounded-lg shadow-xl p-6 transform -translate-y-10 flex flex-col max-h-[85vh]">
+            <div
+                class="flex justify-between items-center border-b border-slate-300 dark:border-slate-700 pb-3 mb-4 flex-shrink-0">
+                <h2 class="text-2xl font-bold flex items-center gap-2"><i class="ph-bold ph-info"></i> Sobre o
+                    Aplicativo</h2>
+                <button id="closeAboutBtn"
+                    class="text-slate-500 dark:text-slate-400 hover:text-black dark:hover:text-white"><i
+                        class="ph-bold ph-x text-2xl"></i></button>
+            </div>
+            <div class="flex-grow min-h-0 overflow-y-auto text-slate-600 dark:text-slate-300 space-y-4 pr-2">
+                <h3 class="text-xl font-bold text-green-600 dark:text-green-400">A Nossa História: Da Paixão pela Música
+                    à Praticidade no Palco</h3>
+                <p>A música sempre foi mais do que uma profissão para mim; é a trilha sonora da minha vida. Anos
+                    dedicados aos palcos, ensaios e à estrada me ensinaram o valor de cada nota, de cada acorde. Mas,
+                    junto com a paixão, sempre carreguei um companheiro fiel e um tanto bagunçado: um amontoado de
+                    papéis, pastas e cadernos com todas as minhas cifras e letras.</p>
+                <p>Quem é músico sabe como é: a correria antes de um show para encontrar a sequência certa, o medo de
+                    uma folha voar com o vento, o desgaste de um material que nunca parecia estar 100% organizado. Eu
+                    sonhava com um jeito mais simples, mais moderno, de carregar todo o meu universo musical comigo.</p>
+                <p>Então, a vida me deu um novo tom, a melodia mais importante que já ouvi: o nascimento do meu primeiro
+                    filho. Segurar aquela vida tão pequena nos braços mudou minha perspectiva sobre tudo, especialmente
+                    sobre o tempo e o legado. Eu queria mais momentos com minha família, mais praticidade na minha
+                    carreira e, acima de tudo, queria construir algo que fizesse a diferença.</p>
+                <p>Foi nesse momento que a ideia floresceu. Olhando para o futuro do meu filho, pensei no futuro da
+                    minha paixão. E se eu pudesse transformar aquela pilha de papéis em algo digital, intuitivo e
+                    acessível? E se a solução para o meu problema pudesse também ser a solução para incontáveis outros
+                    músicos que enfrentavam os mesmos desafios?</p>
+                <p>Assim nasceu este aplicativo. Ele foi criado nas poucas horas que sobravam entre uma mamadeira e um
+                    ensaio, movido pelo desejo de unir a tradição da música com a inovação da tecnologia. O objetivo
+                    nunca foi apenas substituir o papel, mas sim libertar o músico.</p>
+                <p>Libertá-lo para que ele possa focar no que realmente importa: a sua arte, a sua performance, a
+                    conexão com o público.</p>
+                <p class="font-semibold text-green-600 dark:text-green-400">Hoje, este aplicativo é mais do que um
+                    software. Ele é o resultado de um sonho de um pai músico que quis criar um futuro mais simples e
+                    organizado para si e para seus colegas de palco. É a nossa forma de dizer que a tecnologia pode, e
+                    deve, servir à paixão. Para que, enquanto você brilha, nós cuidamos do seu repertório.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Container para Notificações -->
+    <div id="notification-container" class="fixed bottom-5 right-5 z-50 flex flex-col gap-3"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- ELEMENTOS DO DOM ---
+            // Variáveis do tema adicionadas de volta
+            const themeToggleBtn = document.getElementById('theme-toggle-btn');
+            const themeIcon = document.getElementById('theme-icon');
+            const mainView = document.getElementById('main-view');
+            const licenseOverlay = document.getElementById('license-overlay');
+            const licenseInput = document.getElementById('licenseInput');
+            const activateBtn = document.getElementById('activateBtn');
+            const cancelActivationBtn = document.getElementById('cancelActivationBtn');
+            const licenseError = document.getElementById('license-error');
+            const licenseMessage = document.getElementById('license-message');
+            const folderInput = document.getElementById('folderInput'), lyricsInput = document.getElementById('lyricsInput'), importBackupInput = document.getElementById('importBackupInput');
+            const selectFolderBtn = document.getElementById('selectFolderBtn'), importLyricsBtn = document.getElementById('importLyricsBtn'), addSongBtn = document.getElementById('addSongBtn');
+            const songList = document.getElementById('songList'), repertoireList = document.getElementById('repertoireList');
+            const welcomeView = document.getElementById('welcome-view'), detailsView = document.getElementById('details-view');
+            const audioPlayer = document.getElementById('audioPlayer');
+            const songTitleInput = document.getElementById('songTitleInput'), songArtistSelect = document.getElementById('songArtistSelect'), songKeySelect = document.getElementById('songKeySelect'), songStyleSelect = document.getElementById('songStyleSelect');
+            const lyricsEditor = document.getElementById('lyricsEditor');
+            const saveStatus = document.getElementById('saveStatus'), exportLyricsBtn = document.getElementById('exportLyricsBtn'), deleteSongBtn = document.getElementById('deleteSongBtn');
+            const repertoireName = document.getElementById('repertoireName'), addRepertoireBtn = document.getElementById('addRepertoireBtn');
+            const backToLibraryBtn = document.getElementById('backToLibraryBtn');
+            const listsBtn = document.getElementById('listsBtn'), backupBtn = document.getElementById('backupBtn'), aboutBtn = document.getElementById('aboutBtn');
+            const listsModal = window.listsModal = document.getElementById('listsModal'), closeListsBtn = document.getElementById('closeListsBtn');
+            const backupModal = window.backupModal = document.getElementById('backupModal'), closeBackupBtn = document.getElementById('closeBackupBtn');
+            const aboutModal = window.aboutModal = document.getElementById('aboutModal'), closeAboutBtn = document.getElementById('closeAboutBtn');
+            const repertoireEditorView = document.getElementById('repertoire-editor-view'), editorRepertoireName = document.getElementById('editorRepertoireName'), closeRepertoireEditorBtn = document.getElementById('closeRepertoireEditorBtn'), repertoireSongListEditor = document.getElementById('repertoireSongListEditor'), editorLibraryList = document.getElementById('editorLibraryList'), libraryFilterInput = document.getElementById('libraryFilterInput'), repertoireSongCount = document.getElementById('repertoireSongCount'), styleFilterSelect = document.getElementById('styleFilterSelect');
+            const setlistView = document.getElementById('setlist-view'), closeSetlistBtn = document.getElementById('closeSetlistBtn'), setlistCurrentTitle = document.getElementById('setlist-current-title'), setlistCurrentArtist = document.getElementById('setlist-current-artist'), setlistCurrentKey = document.getElementById('setlist-current-key'), setlistProgress = document.getElementById('setlist-progress'), setlistNextTitle = document.getElementById('setlist-next-title'), setlistNextArtist = document.getElementById('setlist-next-artist'), setlistLyricsView = document.getElementById('setlist-lyrics-view');
+            const setlistSearchBtn = document.getElementById('setlistSearchBtn'), setlistSearchContainer = document.getElementById('setlist-search-container'), setlistSearchInput = document.getElementById('setlist-search-input'), setlistSearchResults = document.getElementById('setlist-search-results'), returnToSetlistBtn = document.getElementById('returnToSetlistBtn');
+            const exportAllDataBtn = document.getElementById('exportAllDataBtn'), importAllDataBtn = document.getElementById('importAllDataBtn');
+            const zoomInBtn = document.getElementById('zoomInBtn'), zoomOutBtn = document.getElementById('zoomOutBtn'), zoomResetBtn = document.getElementById('zoomResetBtn');
+            const column1Btn = document.getElementById('column-1-btn'), column2Btn = document.getElementById('column-2-btn');
+            const prevSongBtn = document.getElementById('prevSongBtn'), nextSongBtn = document.getElementById('nextSongBtn');
+            const zoomLevelLabel = document.getElementById('zoomLevelLabel');
+            // Teleprompter
+            const teleprompterView = document.getElementById('teleprompter-view');
+            const tpContent = document.getElementById('tp-content');
+            const tpProgress = document.getElementById('tp-progress');
+            const tpDots = document.getElementById('tp-dots');
+            const tpPrevBtn = document.getElementById('tp-prev-btn');
+            const tpNextBtn = document.getElementById('tp-next-btn');
+            const closeTeleprompterBtn = document.getElementById('closeTeleprompterBtn');
+            const tpCol1Btn = document.getElementById('tp-col1-btn');
+            const tpCol2Btn = document.getElementById('tp-col2-btn');
+
+            // --- ESTADO DO APLICATIVO ---
+            let songLibrary = [], repertoires = [], fileHandles = {};
+            let artists = [], keys = [], styles = [];
+            let activeSongId = null, activeRepertoireId = null, editingRepertoireId = null;
+            let currentSetlist = [], currentSetlistIndex = 0, setlistPausedAt = null;
+            let currentSongPage = 0, totalSongPages = 1;
+            let saveTimeout, sortableInstance = null;
+            let isLicensed = false;
+            let tpGroups = [], tpCurrentPage = 0, tpColumns = 1;
+            let setlistFontSize = 1.5;
+            let setlistColumnCount = 1;
+            let currentTheme = 'dark'; 
+
+            // --- LÓGICA DE LICENÇA ---
+            const SECRET_KEY = "SUA-CHAVE-SECRETA-AQUI-123";
+
+            function checkLicense() {
+                const storedLicense = localStorage.getItem('licenseKey');
+                if (!storedLicense) {
+                    isLicensed = false;
+                    unlockApp();
+                    return;
+                }
+
+                try {
+                    const bytes = CryptoJS.AES.decrypt(storedLicense, SECRET_KEY);
+                    const decryptedData = JSON.parse(bytes.toString(CryptoJS.enc.Utf8));
+
+                    const expirationDate = new Date(decryptedData.expires);
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+
+                    if (expirationDate >= today) {
+                        isLicensed = true;
+                        unlockApp();
+                    } else {
+                        isLicensed = false;
+                        licenseError.textContent = 'Sua licença expirou.';
+                        showLicenseScreen();
+                    }
+                } catch (e) {
+                    isLicensed = false;
+                    licenseError.textContent = 'Chave de licença inválida.';
+                    showLicenseScreen();
+                }
+            }
+
+            function activateLicense() {
+                const key = licenseInput.value.trim();
+                if (!key) {
+                    licenseError.textContent = 'Por favor, insira uma chave.';
+                    return;
+                }
+                localStorage.setItem('licenseKey', key);
+                checkLicense();
+            }
+
+            function showLicenseScreen(message = null) {
+                const defaultMessage = 'Para usar esta funcionalidade, por favor, ative a versão completa do aplicativo.';
+                licenseMessage.textContent = message || defaultMessage;
+                mainView.classList.add('hidden');
+                licenseOverlay.classList.remove('hidden');
+            }
+
+            function closeLicenseScreen() {
+                licenseOverlay.classList.add('hidden');
+                mainView.classList.remove('hidden');
+            }
+
+            function unlockApp() {
+                licenseOverlay.classList.add('hidden');
+                mainView.classList.remove('hidden');
+                loadFromStorage();
+            }
+
+            // --- FUNÇÕES DE ARMAZENAMENTO (localStorage) ---
+            function loadFromStorage() {
+                songLibrary = JSON.parse(localStorage.getItem('songLibrary') || '[]');
+                repertoires = JSON.parse(localStorage.getItem('repertoires') || '[]');
+                artists = JSON.parse(localStorage.getItem('artistsList') || '["Banda Calmon", "Banda G10", "Banda Passarela", "Banda San Marino", "Brilha Som", "Corpo e Alma", "Daniel", "Eduardo Costa", "Gusttavo Lima", "João Paulo e Daniel", "Musical JM", "Musical San Francisco", "OS Atuais", "Os Federais", "Os Nativos", "Porto Do Som", "Tchê Garatos", "Terceira Dimensão"]');
+                keys = JSON.parse(localStorage.getItem('keysList') || '["C", "Cm", "C#", "C#m", "D", "Dm", "D#", "D#m", "E", "Em", "F", "Fm", "F#", "F#m", "G", "Gm", "G#", "G#m", "A", "Am", "A#", "A#m", "B", "Bm"]');
+                styles = JSON.parse(localStorage.getItem('stylesList') || '["Arrocha", "Axé", "Bachata", "Blues", "Bolero", "Bossa Nova", "Brega", "Brega-funk", "Catchaca", "Clássico", "Country", "Cumbia", "Dance", "Disco", "Eletrônica", "Folk", "Forró", "Funk", "Funk Internacional", "Gospel/Religioso", "Guarânia", "Hard Rock", "Heavy Metal", "Hip Hop/Rap", "House", "Hyperpop", "Infantil", "Jazz", "Jovem Guarda", "K-Pop", "MPB", "Merengue", "Metal", "Nativista", "New Age", "Pagode", "Piseiro", "Pop", "Pop Rock", "Punk Rock", "R&B", "Ranchera", "Reggae", "Reggaeton", "Regional", "Rock", "Romântico", "Salsa", "Samba", "Samba Enredo", "Sertanejo", "Ska", "Tango", "Valsa", "Vaneira", "Xote"]');
+                setlistFontSize = parseFloat(localStorage.getItem('setlistFontSize') || 1.5);
+                setlistColumnCount = parseInt(localStorage.getItem('setlistColumnCount') || 1);
+                // Lógica do tema restaurada
+                currentTheme = localStorage.getItem('appTheme') || 'dark';
+                applyTheme(currentTheme);
+                renderAll();
+            }
+
+            function saveToStorage() {
+                localStorage.setItem('songLibrary', JSON.stringify(songLibrary));
+                localStorage.setItem('repertoires', JSON.stringify(repertoires));
+                localStorage.setItem('artistsList', JSON.stringify(artists));
+                localStorage.setItem('keysList', JSON.stringify(keys));
+                localStorage.setItem('stylesList', JSON.stringify(styles));
+                localStorage.setItem('setlistFontSize', setlistFontSize);
+                localStorage.setItem('setlistColumnCount', setlistColumnCount);
+                // Lógica do tema restaurada
+                localStorage.setItem('appTheme', currentTheme);
+            }
+
+            // --- FUNÇÕES DE TEMA (Restauradas) ---
+            function toggleTheme() {
+                currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
+                applyTheme(currentTheme);
+                saveToStorage();
+            }
+
+            function applyTheme(theme) {
+                if (theme === 'light') {
+                    document.documentElement.classList.remove('dark');
+                    themeIcon.classList.remove('ph-sun');
+                    themeIcon.classList.add('ph-moon');
+                } else {
+                    document.documentElement.classList.add('dark');
+                    themeIcon.classList.remove('ph-moon');
+                    themeIcon.classList.add('ph-sun');
+                }
+            }
+
+            // --- O restante do seu script ---
+            function updateActiveSong(data) {
+                if (!activeSongId) return;
+                const songIndex = songLibrary.findIndex(s => s.id === activeSongId);
+                if (songIndex > -1) {
+                    songLibrary[songIndex] = { ...songLibrary[songIndex], ...data };
+                    clearTimeout(saveTimeout);
+                    updateSaveStatus('saving');
+                    saveTimeout = setTimeout(() => {
+                        saveToStorage();
+                        updateSaveStatus('saved');
+                        if (data.title !== undefined || data.artist !== undefined) renderSongList();
+                    }, 1000);
+                }
+            }
+
+            function renderAll() {
+                renderSongList();
+                renderRepertoireList();
+                renderListManagers();
+            }
+
+            function renderSongList() {
+                const scrollPosition = songList.parentNode.scrollTop;
+                songList.innerHTML = '';
+                let songsToRender = activeRepertoireId ? (repertoires.find(r => r.id === activeRepertoireId)?.songIds || []).map(id => songLibrary.find(s => s.id === id)).filter(Boolean) : songLibrary;
+                if (songsToRender.length === 0) {
+                    songList.innerHTML = `<li class="text-gray-500 dark:text-gray-400 italic p-2">${activeRepertoireId ? 'Repertório vazio. Clique em "Editar" para adicionar músicas.' : 'Nenhuma música na biblioteca.'}</li>`;
+                    return;
+                }
+                songsToRender.forEach(song => {
+                    const li = document.createElement('li');
+                    li.className = `song-item p-2 rounded-md hover:bg-indigo-500 hover:text-white cursor-pointer transition-colors duration-150 flex justify-between items-center`;
+                    if (song.id === activeSongId) li.classList.add('active');
+                    li.dataset.id = song.id;
+                    li.innerHTML = `
+                    <div class="flex flex-col overflow-hidden">
+                        <span class="font-semibold truncate">${song.title || 'Nova Música'}</span>
+                        <span class="text-sm text-gray-500 dark:text-gray-400 truncate">${song.artist || 'Artista desconhecido'}</span>
+                    </div>`;
+                    li.addEventListener('click', () => selectSong(song.id));
+                    songList.appendChild(li);
+                });
+                songList.parentNode.scrollTop = scrollPosition;
+            }
+
+            function renderRepertoireList() {
+                repertoireList.innerHTML = '';
+                if (repertoires.length === 0) {
+                    repertoireList.innerHTML = '<li class="text-gray-500 dark:text-gray-400 italic text-sm p-2">Nenhum repertório criado.</li>';
+                    return;
+                }
+                repertoires.forEach(rep => {
+                    const li = document.createElement('li');
+                    li.className = 'repertoire-item p-2 rounded-md hover:bg-green-700 dark:hover:bg-green-800 cursor-pointer flex justify-between items-center';
+                    if (rep.id === activeRepertoireId) li.classList.add('active');
+                    li.dataset.id = rep.id;
+                    li.innerHTML = `
+                    <span class="flex-grow truncate" onclick="selectRepertoire('${rep.id}')">${rep.name}</span>
+                    <div class="flex items-center flex-shrink-0">
+                        <button class="p-1 hover:text-green-300" title="Tocar Repertório" onclick="openSetlistView('${rep.id}', event)"><i class="ph-bold ph-play-circle text-xl"></i></button>
+                        <button class="p-1 hover:text-indigo-300" title="Teleprompter" onclick="openTeleprompter('${rep.id}', event)"><i class="ph-bold ph-monitor-play"></i></button>
+                        <button class="p-1 hover:text-sky-300" title="Editar Repertório" onclick="openRepertoireEditor('${rep.id}', event)"><i class="ph-bold ph-pencil-simple"></i></button>
+                        <button class="p-1 hover:text-red-400" title="Excluir Repertório" onclick="deleteRepertoire('${rep.id}', event)"><i class="ph-bold ph-trash"></i></button>
+                    </div>`;
+                    repertoireList.appendChild(li);
+                });
+            }
+
+            // ---- MOBILE TAB NAVIGATION ----
+            function switchMobileTab(tab) {
+                const sidebar = document.getElementById('sidebar-panel');
+                const details = document.getElementById('details-view');
+                const tabLib = document.getElementById('tab-library');
+                const tabEd = document.getElementById('tab-editor');
+                if (tab === 'library') {
+                    sidebar.classList.add('mobile-active');
+                    details.classList.remove('mobile-active');
+                    tabLib.classList.add('active');
+                    tabEd.classList.remove('active');
+                } else {
+                    sidebar.classList.remove('mobile-active');
+                    details.classList.add('mobile-active');
+                    tabLib.classList.remove('active');
+                    tabEd.classList.add('active');
+                }
+            }
+            window.switchMobileTab = switchMobileTab;
+
+            function selectSong(id) {
+                activeSongId = id;
+                welcomeView.classList.add('hidden');
+                detailsView.classList.remove('hidden');
+                // No mobile, troca automaticamente para a aba do editor
+                if (window.innerWidth < 768) switchMobileTab('editor');
+                const song = songLibrary.find(s => s.id === id);
+                if (!song) return;
+                songTitleInput.value = song.title || '';
+                populateDropdown(songArtistSelect, artists, song.artist || '', 'Artista');
+                populateDropdown(songKeySelect, keys, song.key || '', 'Tom');
+                populateDropdown(songStyleSelect, styles, song.style || '', 'Estilo');
+                lyricsEditor.innerHTML = formatLyricsForDisplay(song.lyrics || '');
+                const fileHandle = fileHandles[song.id];
+                audioPlayer.style.display = fileHandle ? 'block' : 'none';
+                if (fileHandle) audioPlayer.src = URL.createObjectURL(fileHandle);
+                renderSongList();
+            }
+
+            function selectRepertoire(id) {
+                activeRepertoireId = id;
+                backToLibraryBtn.classList.remove('hidden');
+                renderRepertoireList();
+                renderSongList();
+            }
+
+            function populateDropdown(selectElement, items, selectedValue, placeholder) {
+                const currentValue = selectElement.value;
+                selectElement.innerHTML = `<option value="">-- ${placeholder} --</option>`;
+                items.forEach(item => {
+                    const option = document.createElement('option');
+                    option.value = item;
+                    option.textContent = item;
+                    selectElement.appendChild(option);
+                });
+                selectElement.value = items.includes(selectedValue) ? selectedValue : '';
+            }
+
+            function renderListManagers() {
+                document.getElementById('artists-list-manager').innerHTML = createListManagerHTML('Artistas', 'artists', artists);
+                document.getElementById('keys-list-manager').innerHTML = createListManagerHTML('Tons', 'keys', keys);
+                document.getElementById('styles-list-manager').innerHTML = createListManagerHTML('Estilos', 'styles', styles);
+            }
+
+            function createListManagerHTML(title, idPrefix, items) {
+                let itemsHTML = items.map(item => `
+                <li class="flex justify-between items-center bg-white dark:bg-slate-900 p-2 rounded">
+                    <span>${item}</span>
+                    <button onclick="deleteListItem('${idPrefix}', '${item}')" class="text-red-500 hover:text-red-400"><i class="ph-bold ph-trash"></i></button>
+                </li>`).join('');
+                return `
+                <h4 class="font-bold mb-2">${title}</h4>
+                <div class="flex gap-2 mb-2">
+                    <input type="text" id="${idPrefix}-input" class="w-full bg-slate-300 dark:bg-slate-700 p-1 rounded-md text-sm text-slate-800 dark:text-slate-200 placeholder-slate-500 dark:placeholder-slate-400" placeholder="Novo item...">
+                    <button onclick="addListItem('${idPrefix}')" class="bg-green-600 p-1 rounded-md"><i class="ph-bold ph-plus"></i></button>
+                </div>
+                <ul class="space-y-1 h-32 overflow-y-auto p-1 bg-slate-300/50 dark:bg-slate-700/50 rounded-md">${itemsHTML}</ul>`;
+            }
+
+            function updateAllDropdowns() {
+                if (activeSongId) {
+                    const song = songLibrary.find(s => s.id === activeSongId);
+                    if (song) {
+                        populateDropdown(songArtistSelect, artists, song.artist || '', 'Artista');
+                        populateDropdown(songKeySelect, keys, song.key || '', 'Tom');
+                        populateDropdown(songStyleSelect, styles, song.style || '', 'Estilo');
+                    }
+                }
+            }
+
+            window.addListItem = (type) => {
+                const input = document.getElementById(`${type}-input`);
+                const value = input.value.trim();
+                if (!value) return;
+                const list = (type === 'artists') ? artists : (type === 'keys') ? keys : styles;
+                if (!list.includes(value)) {
+                    list.push(value);
+                    saveToStorage();
+                    renderListManagers();
+                    input.value = '';
+                    updateAllDropdowns();
+                }
+            };
+
+            window.deleteListItem = (type, item) => {
+                const list = (type === 'artists') ? artists : (type === 'keys') ? keys : styles;
+                const index = list.indexOf(item);
+                if (index > -1) {
+                    list.splice(index, 1);
+                    saveToStorage();
+                    renderListManagers();
+                    updateAllDropdowns();
+                }
+            };
+
+            function formatLyricsForDisplay(text) {
+                if (!text) return '';
+                const escapedText = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                
+                // Transforma cada linha em uma div para evitar quebras no meio da frase
+                const lines = escapedText.split('\n');
+                return lines.map(line => {
+                    const formattedLine = line.replace(/\[([^\]]+)\]/g, '<span class="chord">[$1]</span>');
+                    return `<div class="lyric-line">${formattedLine || '&nbsp;'}</div>`;
+                }).join('');
+            }
+
+            function updateSaveStatus(status) {
+                saveStatus.classList.remove('opacity-0');
+                if (status === 'saving') saveStatus.innerHTML = '<i class="ph ph-spinner-gap animate-spin"></i> Salvando...';
+                else if (status === 'saved') {
+                    saveStatus.innerHTML = '<i class="ph-bold ph-check-circle"></i> Salvo';
+                    setTimeout(() => saveStatus.classList.add('opacity-0'), 2000);
+                }
+            }
+
+            function exportLyricsToFile() {
+                if (!activeSongId) return;
+                const song = songLibrary.find(s => s.id === activeSongId);
+                if (!song) return;
+                let fileContent = `Música: ${song.title || 'S/ Título'}\nArtista: ${song.artist || 'N/A'}\nTom: ${song.key || 'N/A'}\nEstilo: ${song.style || 'N/A'}\n\n------------------------------------\n\n${song.lyrics || ''}`;
+                const blob = new Blob([fileContent], { type: 'text/plain;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `${song.title || 'letra'}.txt`.replace(/[/\\?%*:|"<>]/g, '-');
+                link.click();
+                URL.revokeObjectURL(url);
+            }
+
+            window.deleteRepertoire = (repId, event) => {
+                event.stopPropagation();
+                repertoires = repertoires.filter(r => r.id !== repId);
+                if (activeRepertoireId === repId) {
+                    activeRepertoireId = null;
+                    backToLibraryBtn.click();
+                }
+                saveToStorage();
+                renderRepertoireList();
+                showNotification("Repertório excluído.");
+            };
+
+            function deleteActiveSong() {
+                if (!activeSongId) return;
+
+                songLibrary = songLibrary.filter(song => song.id !== activeSongId);
+
+                repertoires.forEach(rep => {
+                    rep.songIds = rep.songIds.filter(id => id !== activeSongId);
+                });
+
+                saveToStorage();
+
+                activeSongId = null;
+                detailsView.classList.add('hidden');
+                welcomeView.classList.remove('hidden');
+                renderAll();
+                showNotification("Música excluída com sucesso.");
+            }
+
+            function createRepertoire() {
+                if (!isLicensed && repertoires.length >= 1) {
+                    showLicenseScreen('Para criar mais de um repertório, por favor, ative a versão completa.');
+                    return;
+                }
+                const name = repertoireName.value.trim();
+                if (!name) {
+                    showNotification("Por favor, digite um nome para o repertório.", true);
+                    return;
+                }
+                repertoires.push({ id: `rep_${Date.now()}`, name: name, songIds: [] });
+                repertoireName.value = '';
+                saveToStorage();
+                renderRepertoireList();
+            }
+
+            function openModal(modalElement) {
+                modalElement.classList.remove('hidden');
+                setTimeout(() => {
+                    modalElement.classList.remove('opacity-0');
+                    modalElement.querySelector('.modal-container').classList.remove('-translate-y-10');
+                }, 10);
+            }
+            window.openModal = openModal;
+
+            function closeModal(modalElement) {
+                modalElement.classList.add('opacity-0');
+                modalElement.querySelector('.modal-container').classList.add('-translate-y-10');
+                setTimeout(() => modalElement.classList.add('hidden'), 300);
+            }
+            window.closeModal = closeModal;
+
+            window.openRepertoireEditor = (repId, event) => {
+                event.stopPropagation();
+                editingRepertoireId = repId;
+                const repertoire = repertoires.find(r => r.id === repId);
+                if (!repertoire) return;
+                editorRepertoireName.textContent = repertoire.name;
+                mainView.classList.add('hidden');
+                repertoireEditorView.classList.remove('hidden');
+                renderRepertoireEditor();
+            }
+
+            function closeRepertoireEditor() {
+                editingRepertoireId = null;
+                mainView.classList.remove('hidden');
+                repertoireEditorView.classList.add('hidden');
+                renderSongList();
+            }
+
+            function renderRepertoireEditor() {
+                if (!editingRepertoireId) return;
+                const repertoire = repertoires.find(r => r.id === editingRepertoireId);
+
+                styleFilterSelect.innerHTML = '<option value="">Todos os Estilos</option>';
+                styles.forEach(style => {
+                    const option = document.createElement('option');
+                    option.value = style;
+                    option.textContent = style;
+                    styleFilterSelect.appendChild(option);
+                });
+
+                const filterText = libraryFilterInput.value.toLowerCase();
+                const filterStyle = styleFilterSelect.value;
+
+                // Destruir instância anterior do Sortable antes de re-renderizar
+                if (sortableInstance) {
+                    sortableInstance.destroy();
+                    sortableInstance = null;
+                }
+
+                repertoireSongListEditor.innerHTML = '';
+                const repertoireSongs = repertoire.songIds.map(id => songLibrary.find(s => s.id === id)).filter(Boolean);
+                repertoireSongCount.textContent = repertoireSongs.length;
+                repertoireSongs.forEach((song, index) => {
+                    const li = document.createElement('li');
+                    li.className = 'bg-white dark:bg-slate-900 p-2 rounded flex items-center justify-between cursor-grab active:cursor-grabbing';
+                    li.dataset.id = song.id;
+                    li.innerHTML = `
+                    <div class="flex items-center flex-grow overflow-hidden">
+                        <i class="ph-bold ph-dots-six-vertical text-slate-400 dark:text-slate-600 mr-2 flex-shrink-0" title="Arrastar para reordenar"></i>
+                        <button class="p-1 hover:text-sky-500 dark:hover:text-sky-300 mr-2" title="Editar Música" onclick="editSongFromRepertoire('${song.id}')"><i class="ph-bold ph-pencil-simple"></i></button>
+                        <div class="flex-grow overflow-hidden">
+                            <p class="font-semibold truncate">${song.title}</p>
+                            <p class="text-sm text-gray-500 dark:text-gray-400 truncate">${song.artist}</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center flex-shrink-0 ml-2">
+                        <button class="p-1 hover:text-sky-500 dark:hover:text-sky-300" onclick="moveSongInRepertoire(${index}, 'up')"><i class="ph-bold ph-arrow-up"></i></button>
+                        <button class="p-1 hover:text-sky-500 dark:hover:text-sky-300" onclick="moveSongInRepertoire(${index}, 'down')"><i class="ph-bold ph-arrow-down"></i></button>
+                        <button class="p-1 hover:text-red-500 dark:hover:text-red-400" onclick="removeSongFromRepertoire('${song.id}')"><i class="ph-bold ph-caret-right"></i></button>
+                    </div>`;
+                    repertoireSongListEditor.appendChild(li);
+                });
+
+                // Inicializar SortableJS na lista do repertório
+                sortableInstance = new Sortable(repertoireSongListEditor, {
+                    animation: 150,
+                    ghostClass: 'ghost',
+                    handle: '.ph-dots-six-vertical',
+                    onEnd: (evt) => {
+                        const rep = repertoires.find(r => r.id === editingRepertoireId);
+                        if (!rep) return;
+                        // Reconstruir songIds com base na nova ordem dos itens do DOM
+                        const newOrder = Array.from(repertoireSongListEditor.querySelectorAll('li[data-id]'))
+                            .map(li => li.dataset.id);
+                        rep.songIds = newOrder;
+                        saveToStorage();
+                        // Re-renderizar para atualizar índices dos botões ↑↓
+                        renderRepertoireEditor();
+                    }
+                });
+
+                editorLibraryList.innerHTML = '';
+                const librarySongs = songLibrary.filter(song => {
+                    const matchesText = song.title.toLowerCase().includes(filterText) || (song.artist && song.artist.toLowerCase().includes(filterText));
+                    const matchesStyle = !filterStyle || song.style === filterStyle;
+                    return !repertoire.songIds.includes(song.id) && matchesText && matchesStyle;
+                });
+
+                librarySongs.forEach(song => {
+                    const li = document.createElement('li');
+                    li.className = 'bg-white dark:bg-slate-900 p-2 rounded flex items-center';
+                    li.innerHTML = `
+                    <button class="p-1 hover:text-green-500 dark:hover:text-green-400 mr-3" onclick="addSongToRepertoire('${song.id}')"><i class="ph-bold ph-caret-left"></i></button>
+                    <div class="flex-grow overflow-hidden">
+                        <p class="font-semibold truncate">${song.title}</p>
+                        <p class="text-sm text-gray-500 dark:text-gray-400 truncate">${song.artist}</p>
+                    </div>`;
+                    editorLibraryList.appendChild(li);
+                });
+            }
+
+            window.editSongFromRepertoire = (songId) => {
+                closeRepertoireEditor();
+                selectSong(songId);
+            }
+
+            window.addSongToRepertoire = (songId) => {
+                const repertoire = repertoires.find(r => r.id === editingRepertoireId);
+                if (!isLicensed && repertoire && repertoire.songIds.length >= 15) {
+                    showLicenseScreen('Limite de 15 músicas por repertório atingido. Ative a versão completa para adicionar mais.');
+                    return;
+                }
+                if (repertoire && !repertoire.songIds.includes(songId)) {
+                    repertoire.songIds.push(songId);
+                    saveToStorage();
+                    renderRepertoireEditor();
+                }
+            }
+
+            window.removeSongFromRepertoire = (songId) => {
+                const repertoire = repertoires.find(r => r.id === editingRepertoireId);
+                if (repertoire) {
+                    repertoire.songIds = repertoire.songIds.filter(id => id !== songId);
+                    saveToStorage();
+                    renderRepertoireEditor();
+                }
+            }
+
+            window.moveSongInRepertoire = (index, direction) => {
+                const repertoire = repertoires.find(r => r.id === editingRepertoireId);
+                if (!repertoire) return;
+                const newIndex = direction === 'up' ? index - 1 : index + 1;
+                if (newIndex < 0 || newIndex >= repertoire.songIds.length) return;
+                const [movedItem] = repertoire.songIds.splice(index, 1);
+                repertoire.songIds.splice(newIndex, 0, movedItem);
+                saveToStorage();
+                renderRepertoireEditor();
+            }
+
+            window.openSetlistView = (repId, event) => {
+                event.stopPropagation();
+                const repertoire = repertoires.find(r => r.id === repId);
+                if (!repertoire || repertoire.songIds.length === 0) {
+                    showNotification('Este repertório está vazio!', true);
+                    return;
+                }
+                currentSetlist = repertoire.songIds.map(id => songLibrary.find(s => s.id === id)).filter(Boolean);
+                currentSetlistIndex = 0;
+                setlistPausedAt = null;
+                mainView.classList.add('hidden');
+                setlistView.classList.remove('hidden');
+                document.addEventListener('keydown', handleSetlistKeys);
+                // Sincronizar estado visual dos controles
+                updateZoomLabel();
+                setColumns(setlistColumnCount);
+                renderCurrentSetlistSong();
+            }
+
+            function closeSetlistView() {
+                mainView.classList.remove('hidden');
+                setlistView.classList.add('hidden');
+                setlistSearchContainer.classList.add('hidden');
+                setlistSearchInput.value = '';
+                document.removeEventListener('keydown', handleSetlistKeys);
+            }
+
+            function renderCurrentSetlistSong(songToRender = null) {
+                const isOffScript = !!songToRender;
+                const song = isOffScript ? songToRender : currentSetlist[currentSetlistIndex];
+
+                if (!song) {
+                    closeSetlistView();
+                    return;
+                }
+
+                const nextSong = isOffScript ? null : currentSetlist[currentSetlistIndex + 1];
+
+                setlistCurrentTitle.textContent = song.title || 'Sem Título';
+                setlistCurrentArtist.textContent = song.artist || 'Artista Desconhecido';
+                setlistCurrentKey.textContent = `Tom: ${song.key || 'N/A'}`;
+
+                if (isOffScript) {
+                    setlistProgress.textContent = 'Fora do Repertório';
+                    returnToSetlistBtn.classList.remove('hidden');
+                } else {
+                    setlistProgress.textContent = `Música ${currentSetlistIndex + 1} / ${currentSetlist.length}`;
+                    returnToSetlistBtn.classList.add('hidden');
+                }
+
+                let lyricsContent = song.lyrics || 'Nenhuma letra informada.';
+                const separator = '------------------------------------';
+                const separatorIndex = lyricsContent.indexOf(separator);
+                if (separatorIndex !== -1) {
+                    lyricsContent = lyricsContent.substring(separatorIndex + separator.length).trim();
+                }
+
+                setlistLyricsView.style.fontSize = `${setlistFontSize}rem`;
+                applyColumnStyle();
+                setlistLyricsView.innerHTML = formatLyricsForDisplay(lyricsContent);
+                
+                // Resetar para a primeira página ou ir para a última (se estiver voltando)
+                const isComingBack = window._isComingBack; 
+                window._isComingBack = false;
+
+                // Calcular páginas após renderizar
+                setTimeout(() => {
+                    const clientHeight = setlistLyricsView.clientHeight;
+                    const scrollHeight = setlistLyricsView.scrollHeight;
+                    totalSongPages = Math.ceil(scrollHeight / (clientHeight || 1)) || 1;
+                    
+                    if (isComingBack) {
+                        currentSongPage = totalSongPages - 1;
+                    } else {
+                        currentSongPage = 0;
+                    }
+                    
+                    updateSetlistProgressLabel();
+                    scrollToCurrentPage();
+                }, 100);
+
+                if (nextSong) {
+                    setlistNextTitle.textContent = nextSong.title || 'Sem Título';
+                    setlistNextArtist.textContent = nextSong.artist || 'Artista Desconhecido';
+                } else {
+                    setlistNextTitle.textContent = isOffScript ? '' : 'Fim do Repertório';
+                    setlistNextArtist.textContent = '';
+                }
+            }
+
+            function scrollToCurrentPage() {
+                const pageHeight = setlistLyricsView.clientHeight;
+                setlistLyricsView.scrollTo({
+                    top: currentSongPage * pageHeight,
+                    behavior: 'smooth'
+                });
+                updateSetlistProgressLabel();
+            }
+
+            function updateSetlistProgressLabel() {
+                const songInfo = `Música ${currentSetlistIndex + 1} / ${currentSetlist.length}`;
+                const pageInfo = totalSongPages > 1 ? ` (Pág. ${currentSongPage + 1}/${totalSongPages})` : '';
+                setlistProgress.textContent = songInfo + pageInfo;
+
+                // Atualizar os pontos indicadores
+                const indicator = document.getElementById('setlist-page-indicator');
+                indicator.innerHTML = '';
+                if (totalSongPages > 1) {
+                    for (let i = 0; i < totalSongPages; i++) {
+                        const dot = document.createElement('div');
+                        dot.className = `page-dot ${i === currentSongPage ? 'active' : ''}`;
+                        indicator.appendChild(dot);
+                    }
+                }
+            }
+
+            function handleNextSetlistNavigation() {
+                if (setlistPausedAt !== null) {
+                    returnToSetlist();
+                    return;
+                }
+
+                if (currentSongPage < totalSongPages - 1) {
+                    currentSongPage++;
+                    scrollToCurrentPage();
+                } else {
+                    if (currentSetlistIndex < currentSetlist.length - 1) {
+                        currentSetlistIndex++;
+                        currentSongPage = 0;
+                        renderCurrentSetlistSong();
+                    }
+                }
+            }
+
+            function handlePrevSetlistNavigation() {
+                if (setlistPausedAt !== null) {
+                    returnToSetlist();
+                    return;
+                }
+
+                if (currentSongPage > 0) {
+                    currentSongPage--;
+                    scrollToCurrentPage();
+                } else {
+                    if (currentSetlistIndex > 0) {
+                        currentSetlistIndex--;
+                        window._isComingBack = true; // Flag para ir para a última pág da música anterior
+                        renderCurrentSetlistSong();
+                    }
+                }
+            }
+
+            function handleSetlistKeys(e) {
+                if (e.key === 'ArrowRight' || e.key === ' ') {
+                    e.preventDefault();
+                    handleNextSetlistNavigation();
+                } else if (e.key === 'ArrowLeft') {
+                    e.preventDefault();
+                    handlePrevSetlistNavigation();
+                } else if (e.key === 'Escape') {
+                    if (!setlistSearchContainer.classList.contains('hidden')) {
+                        setlistSearchContainer.classList.add('hidden');
+                    } else {
+                        closeSetlistView();
+                    }
+                } else if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+                    e.preventDefault();
+                    toggleSetlistSearch();
+                }
+            }
+
+            function toggleSetlistSearch() {
+                setlistSearchContainer.classList.toggle('hidden');
+                if (!setlistSearchContainer.classList.contains('hidden')) {
+                    setlistSearchInput.focus();
+                    renderSetlistSearchResults();
+                }
+            }
+
+            function renderSetlistSearchResults() {
+                const query = setlistSearchInput.value.toLowerCase();
+                const results = songLibrary.filter(song =>
+                    song.title.toLowerCase().includes(query) ||
+                    (song.artist && song.artist.toLowerCase().includes(query))
+                );
+
+                setlistSearchResults.innerHTML = '';
+                if (results.length === 0) {
+                    setlistSearchResults.innerHTML = '<li class="p-2 text-gray-500">Nenhuma música encontrada.</li>';
+                    return;
+                }
+                results.slice(0, 50).forEach(song => {
+                    const li = document.createElement('li');
+                    li.className = 'p-2 rounded-md hover:bg-gray-700 cursor-pointer';
+                    li.innerHTML = `<p class="font-semibold">${song.title}</p><p class="text-sm text-gray-400">${song.artist}</p>`;
+                    li.onclick = () => jumpToSong(song.id);
+                    setlistSearchResults.appendChild(li);
+                });
+            }
+
+            function jumpToSong(songId) {
+                if (setlistPausedAt === null) {
+                    setlistPausedAt = currentSetlistIndex;
+                }
+                const song = songLibrary.find(s => s.id === songId);
+                if (song) {
+                    renderCurrentSetlistSong(song);
+                }
+                toggleSetlistSearch();
+            }
+
+            function returnToSetlist() {
+                if (setlistPausedAt !== null) {
+                    currentSetlistIndex = setlistPausedAt;
+                    setlistPausedAt = null;
+                    renderCurrentSetlistSong();
+                }
+            }
+
+            function exportAllData() {
+                const backupData = {
+                    version: 1,
+                    createdAt: new Date().toISOString(),
+                    data: {
+                        songLibrary: songLibrary,
+                        repertoires: repertoires,
+                        artistsList: artists,
+                        keysList: keys,
+                        stylesList: styles
+                    }
+                };
+                const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                const date = new Date().toISOString().slice(0, 10);
+                link.download = `meu_repertorio_backup_${date}.json`;
+                link.click();
+                URL.revokeObjectURL(url);
+            }
+
+            function importAllData() {
+                importBackupInput.click();
+            }
+
+            function handleImportedFile(event) {
+                const file = event.target.files[0];
+                if (!file) return;
+
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const backupData = JSON.parse(e.target.result);
+                        if (backupData && backupData.data && backupData.data.songLibrary) {
+                            songLibrary = backupData.data.songLibrary || [];
+                            repertoires = backupData.data.repertoires || [];
+                            artists = backupData.data.artistsList || [];
+                            keys = backupData.data.keysList || [];
+                            styles = backupData.data.stylesList || [];
+
+                            saveToStorage();
+                            renderAll();
+                            showNotification('Backup restaurado com sucesso!');
+                        } else {
+                            showNotification('Arquivo de backup inválido.', true);
+                        }
+                    } catch (error) {
+                        showNotification('Erro ao ler o arquivo de backup.', true);
+                        console.error("Erro ao importar backup:", error);
+                    }
+                };
+                reader.readAsText(file);
+                importBackupInput.value = '';
+            }
+
+            function showNotification(message, isError = false) {
+                const container = document.getElementById('notification-container');
+                const notification = document.createElement('div');
+                notification.className = `px-4 py-3 rounded-lg shadow-lg text-white ${isError ? 'bg-red-600' : 'bg-green-600'} transition-opacity duration-300`;
+                notification.textContent = message;
+
+                container.appendChild(notification);
+
+                setTimeout(() => {
+                    notification.classList.add('opacity-0');
+                    setTimeout(() => container.removeChild(notification), 300);
+                }, 3000);
+            }
+
+            function updateZoomLabel() {
+                if (zoomLevelLabel) {
+                    const pct = Math.round((setlistFontSize / 1.5) * 100);
+                    zoomLevelLabel.textContent = pct + '%';
+                }
+            }
+
+            function zoomIn() {
+                if (setlistFontSize < 3) {
+                    setlistFontSize = parseFloat((setlistFontSize + 0.1).toFixed(1));
+                    setlistLyricsView.style.fontSize = `${setlistFontSize}rem`;
+                    updateZoomLabel();
+                    saveToStorage();
+                }
+            }
+
+            function zoomOut() {
+                if (setlistFontSize > 0.8) {
+                    setlistFontSize = parseFloat((setlistFontSize - 0.1).toFixed(1));
+                    setlistLyricsView.style.fontSize = `${setlistFontSize}rem`;
+                    updateZoomLabel();
+                    saveToStorage();
+                }
+            }
+
+            function zoomReset() {
+                setlistFontSize = 1.5;
+                setlistLyricsView.style.fontSize = `${setlistFontSize}rem`;
+                updateZoomLabel();
+                saveToStorage();
+            }
+
+            function setColumns(count) {
+                setlistColumnCount = count;
+                applyColumnStyle();
+                saveToStorage();
+                // Atualizar estado ativo dos botões de coluna
+                if (count === 2) {
+                    column1Btn.classList.remove('active');
+                    column2Btn.classList.add('active');
+                } else {
+                    column1Btn.classList.add('active');
+                    column2Btn.classList.remove('active');
+                }
+            }
+
+            function applyColumnStyle() {
+                if (setlistColumnCount === 2) {
+                    setlistLyricsView.style.columns = '2';
+                    column2Btn.classList.add('active');
+                    column1Btn.classList.remove('active');
+                } else {
+                    setlistLyricsView.style.columns = '1';
+                    column1Btn.classList.add('active');
+                    column2Btn.classList.remove('active');
+                }
+            }
+
+            // --- EVENT LISTENERS ---
+            // Listener do botão de tema restaurado
+            themeToggleBtn.addEventListener('click', toggleTheme);
+
+            selectFolderBtn.addEventListener('click', () => folderInput.click());
+            exportLyricsBtn.addEventListener('click', exportLyricsToFile);
+            deleteSongBtn.addEventListener('click', deleteActiveSong);
+            importLyricsBtn.addEventListener('click', () => lyricsInput.click());
+            addRepertoireBtn.addEventListener('click', createRepertoire);
+            repertoireName.addEventListener('keypress', (e) => { if (e.key === 'Enter') createRepertoire(); });
+            backToLibraryBtn.addEventListener('click', () => {
+                activeRepertoireId = null;
+                backToLibraryBtn.classList.add('hidden');
+                renderRepertoireList();
+                renderSongList();
+            });
+
+            lyricsInput.addEventListener('change', (event) => {
+                const files = Array.from(event.target.files);
+                if (files.length === 0) return;
+                files.forEach(file => {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        const title = file.name.replace(/\.txt$/i, '');
+                        const content = e.target.result;
+                        if (!songLibrary.some(s => s.title.toLowerCase() === title.toLowerCase())) {
+                            songLibrary.push({ id: `manual_${Date.now()}_${title}`, title, lyrics: content, artist: '', key: '', style: '' });
+                        }
+                    };
+                    reader.readAsText(file);
+                });
+                setTimeout(() => { saveToStorage(); renderAll(); }, 500);
+            });
+
+            folderInput.addEventListener('change', (event) => {
+                const audioFiles = Array.from(event.target.files).filter(file => file.type.startsWith('audio/'));
+                audioFiles.forEach(file => {
+                    const songId = `file_${file.name}`;
+                    if (!songLibrary.some(s => s.id === songId)) {
+                        songLibrary.push({ id: songId, title: file.name.replace(/\.[^/.]+$/, ""), artist: '', key: '', style: '', lyrics: '' });
+                    }
+                    fileHandles[songId] = file;
+                });
+                saveToStorage();
+                renderSongList();
+            });
+
+            addSongBtn.addEventListener('click', () => {
+                const newSong = { id: `manual_${Date.now()}`, title: 'Nova Música', artist: '', key: '', style: '', lyrics: '' };
+                songLibrary.unshift(newSong);
+                saveToStorage();
+                renderSongList();
+                selectSong(newSong.id);
+                // Pequeno timeout para garantir que o render do title aconteça antes do select
+                setTimeout(() => {
+                    songTitleInput.focus();
+                    songTitleInput.select();
+                }, 50);
+            });
+
+            listsBtn.addEventListener('click', () => openModal(listsModal));
+            backupBtn.addEventListener('click', () => openModal(backupModal));
+            aboutBtn.addEventListener('click', () => openModal(aboutModal));
+            closeListsBtn.addEventListener('click', () => closeModal(listsModal));
+            closeBackupBtn.addEventListener('click', () => closeModal(backupModal));
+            closeAboutBtn.addEventListener('click', () => closeModal(aboutModal));
+
+            closeRepertoireEditorBtn.addEventListener('click', closeRepertoireEditor);
+            libraryFilterInput.addEventListener('input', renderRepertoireEditor);
+            styleFilterSelect.addEventListener('change', renderRepertoireEditor);
+            closeSetlistBtn.addEventListener('click', closeSetlistView);
+
+            exportAllDataBtn.addEventListener('click', exportAllData);
+            importAllDataBtn.addEventListener('click', importAllData);
+            importBackupInput.addEventListener('change', handleImportedFile);
+
+            setlistSearchBtn.addEventListener('click', toggleSetlistSearch);
+            setlistSearchInput.addEventListener('input', renderSetlistSearchResults);
+            returnToSetlistBtn.addEventListener('click', returnToSetlist);
+
+            zoomInBtn.addEventListener('click', zoomIn);
+            zoomOutBtn.addEventListener('click', zoomOut);
+            zoomResetBtn.addEventListener('click', zoomReset);
+            column1Btn.addEventListener('click', () => setColumns(1));
+            column2Btn.addEventListener('click', () => setColumns(2));
+
+            prevSongBtn.addEventListener('click', handlePrevSetlistNavigation);
+            nextSongBtn.addEventListener('click', handleNextSetlistNavigation);
+
+            songTitleInput.addEventListener('input', () => updateActiveSong({ title: songTitleInput.value }));
+            songArtistSelect.addEventListener('change', () => updateActiveSong({ artist: songArtistSelect.value }));
+            songKeySelect.addEventListener('change', () => updateActiveSong({ key: songKeySelect.value }));
+            songStyleSelect.addEventListener('change', () => updateActiveSong({ style: songStyleSelect.value }));
+            lyricsEditor.addEventListener('input', () => updateActiveSong({ lyrics: lyricsEditor.innerText }));
+
+            // Colar sempre como texto puro, preservando quebras de linha
+            lyricsEditor.addEventListener('paste', (e) => {
+                e.preventDefault();
+                const text = (e.clipboardData || window.clipboardData).getData('text/plain');
+                const sel = window.getSelection();
+                if (!sel || !sel.rangeCount) return;
+                sel.deleteFromDocument();
+                const range = sel.getRangeAt(0);
+                const lines = text.split('\n');
+                const frag = document.createDocumentFragment();
+                lines.forEach((line, i) => {
+                    frag.appendChild(document.createTextNode(line));
+                    if (i < lines.length - 1) {
+                        frag.appendChild(document.createElement('br'));
+                    }
+                });
+                range.insertNode(frag);
+                range.collapse(false);
+                sel.removeAllRanges();
+                sel.addRange(range);
+                lyricsEditor.dispatchEvent(new Event('input'));
+            });
+
+            activateBtn.addEventListener('click', activateLicense);
+            cancelActivationBtn.addEventListener('click', closeLicenseScreen);
+
+            // ============================================================
+            // TELEPROMPTER
+            // ============================================================
+            function groupByConsecutiveStyle(songs) {
+                const groups = [];
+                let current = null;
+                songs.forEach(song => {
+                    const style = song.style || 'Sem Estilo';
+                    if (current && current.style === style && current.songs.length < 10) {
+                        current.songs.push(song);
+                    } else {
+                        if (current) groups.push(current);
+                        current = { style, songs: [song] };
+                    }
+                });
+                if (current) groups.push(current);
+                return groups;
+            }
+
+            function getTpSizes(count, cols) {
+                const perCol = cols === 2 ? Math.ceil(count / 2) : count;
+                // clamp(min, preferred-vw, max) para escalar com a viewport
+                if (perCol <= 1) return { styleSize: 'clamp(2.2rem,9vw,5.5rem)', nameSize: 'clamp(1.8rem,7.5vw,4rem)', keySize: 'clamp(1rem,3.5vw,2rem)', gap: 'clamp(1.4rem,3vw,2.5rem)' };
+                if (perCol <= 2) return { styleSize: 'clamp(2rem,8vw,4.5rem)', nameSize: 'clamp(1.5rem,6.5vw,3.2rem)', keySize: 'clamp(0.85rem,3vw,1.75rem)', gap: 'clamp(1.2rem,2.7vw,2.2rem)' };
+                if (perCol <= 3) return { styleSize: 'clamp(1.8rem,7.5vw,3.8rem)', nameSize: 'clamp(1.3rem,5.8vw,2.8rem)', keySize: 'clamp(0.8rem,2.8vw,1.5rem)', gap: 'clamp(1.1rem,2.5vw,2rem)' };
+                if (perCol <= 5) return { styleSize: 'clamp(1.5rem,6.5vw,3rem)', nameSize: 'clamp(1.1rem,4.8vw,2.2rem)', keySize: 'clamp(0.7rem,2.4vw,1.25rem)', gap: 'clamp(0.9rem,2vw,1.6rem)' };
+                if (perCol <= 7) return { styleSize: 'clamp(1.3rem,5.5vw,2.4rem)', nameSize: 'clamp(1rem,4.2vw,1.8rem)', keySize: 'clamp(0.65rem,2.1vw,1rem)', gap: 'clamp(0.8rem,1.8vw,1.3rem)' };
+                return { styleSize: 'clamp(1.1rem,4.8vw,2rem)', nameSize: 'clamp(0.9rem,3.8vw,1.5rem)', keySize: 'clamp(0.6rem,1.9vw,0.9rem)', gap: 'clamp(0.7rem,1.5vw,1rem)' };
+            }
+
+            function renderTeleprompterPage() {
+                const group = tpGroups[tpCurrentPage];
+                if (!group) return;
+
+                const sz = getTpSizes(group.songs.length, tpColumns);
+                const total = tpGroups.length;
+
+                // Progresso
+                tpProgress.textContent = `Página ${tpCurrentPage + 1} de ${total}`;
+
+                // Dots
+                tpDots.innerHTML = tpGroups.map((g, i) => `
+                    <span title="${g.style}" style="
+                        width:${i === tpCurrentPage ? '1.8rem' : '0.5rem'};
+                        height:0.5rem;
+                        border-radius:9999px;
+                        background:${i === tpCurrentPage ? '#6366f1' : 'rgba(255,255,255,0.2)'};
+                        transition:all 0.3s;
+                        display:inline-block;
+                    "></span>`).join('');
+
+                // Item de cada música — clicável para abrir letra
+                const songItem = (song) => `
+                    <div onclick="openTpSongView('${song.id}')" style="margin-bottom:${sz.gap};cursor:pointer;border-radius:0.5rem;padding:0.25rem 0.5rem;transition:background 0.15s;" onmouseover="this.style.background='rgba(255,255,255,0.06)'" onmouseout="this.style.background='transparent'">
+                        <div style="display:flex;align-items:baseline;justify-content:${tpColumns === 2 ? 'flex-start' : 'center'};gap:0.6rem;flex-wrap:wrap;">
+                            <span style="font-size:${sz.nameSize};font-weight:800;color:#ffffff;line-height:1.2;letter-spacing:-0.01em;">${song.title || 'Sem Título'}</span>
+                            ${song.key ? `<span style="font-size:${sz.keySize};color:#6ee7b7;font-weight:700;letter-spacing:0.04em;white-space:nowrap;">Tom: ${song.key}</span>` : ''}
+                            <i class="ph ph-book-open" style="font-size:${sz.keySize};color:rgba(255,255,255,0.3);margin-left:0.2rem;"></i>
+                        </div>
+                    </div>`;
+
+                // Grid 1 ou 2 colunas
+                const songsHTML = tpColumns === 2
+                    ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:0 3rem;text-align:left;">${group.songs.map(songItem).join('')}</div>`
+                    : group.songs.map(songItem).join('');
+
+                // Divisor
+                const divider = `<div style="width:5rem;height:3px;background:linear-gradient(90deg,#4f46e5,#818cf8);border-radius:2px;margin:0 auto ${sz.gap};"></div>`;
+
+                tpContent.innerHTML = `
+                    <div style="font-size:${sz.styleSize};font-weight:900;text-transform:uppercase;letter-spacing:0.18em;
+                        background:linear-gradient(135deg,#818cf8,#6366f1);-webkit-background-clip:text;-webkit-text-fill-color:transparent;
+                        background-clip:text;margin-bottom:${sz.gap};line-height:1;">
+                        ${group.style}
+                    </div>
+                    ${divider}
+                    ${songsHTML}`;
+
+                // Botões nav
+                const atStart = tpCurrentPage === 0;
+                const atEnd = tpCurrentPage === total - 1;
+                tpPrevBtn.style.opacity = atStart ? '0.3' : '1';
+                tpPrevBtn.style.pointerEvents = atStart ? 'none' : 'auto';
+                tpNextBtn.style.opacity = atEnd ? '0.3' : '1';
+                tpNextBtn.style.pointerEvents = atEnd ? 'none' : 'auto';
+
+                // Sincronizar botões de coluna
+                const activeStyle = 'background:rgba(99,102,241,0.8);color:#fff;';
+                const inactiveStyle = 'background:rgba(255,255,255,0.07);color:#94a3b8;border-left:1px solid rgba(255,255,255,0.12);';
+                tpCol1Btn.style.cssText = tpColumns === 1 ? activeStyle : inactiveStyle;
+                tpCol2Btn.style.cssText = tpColumns === 2 ? activeStyle : inactiveStyle + 'border-left:1px solid rgba(255,255,255,0.12);';
+            }
+
+            function handleTeleprompterKeys(e) {
+                if (e.key === 'Escape') {
+                    const overlay = document.getElementById('tp-song-overlay');
+                    if (!overlay.classList.contains('hidden')) {
+                        closeTpSongView();
+                    } else {
+                        closeTeleprompter();
+                    }
+                    return;
+                }
+                if (!document.getElementById('tp-song-overlay').classList.contains('hidden')) return;
+                if (e.key === 'ArrowRight' && tpCurrentPage < tpGroups.length - 1) {
+                    tpCurrentPage++; renderTeleprompterPage();
+                } else if (e.key === 'ArrowLeft' && tpCurrentPage > 0) {
+                    tpCurrentPage--; renderTeleprompterPage();
+                }
+            }
+
+            function openTpSongView(songId) {
+                const song = songLibrary.find(s => s.id === songId);
+                if (!song) return;
+                document.getElementById('tp-song-view-title').textContent = song.title || 'Sem Título';
+                const meta = [song.artist, song.key ? `Tom: ${song.key}` : '', song.style].filter(Boolean).join(' • ');
+                document.getElementById('tp-song-view-meta').textContent = meta;
+                const lyricsEl = document.getElementById('tp-song-view-lyrics');
+                lyricsEl.textContent = song.lyrics || '(sem letra cadastrada para esta música)';
+                document.getElementById('tp-song-overlay').classList.remove('hidden');
+                lyricsEl.scrollTop = 0;
+            }
+            window.openTpSongView = openTpSongView;
+
+            function closeTpSongView() {
+                document.getElementById('tp-song-overlay').classList.add('hidden');
+            }
+            window.closeTpSongView = closeTpSongView;
+
+            function closeTeleprompter() {
+                teleprompterView.classList.add('hidden');
+                mainView.classList.remove('hidden');
+                document.removeEventListener('keydown', handleTeleprompterKeys);
+            }
+
+            window.openTeleprompter = (repId, event) => {
+                event.stopPropagation();
+                const repertoire = repertoires.find(r => r.id === repId);
+                if (!repertoire || repertoire.songIds.length === 0) {
+                    showNotification('Este repertório está vazio!', true);
+                    return;
+                }
+                const songs = repertoire.songIds
+                    .map(id => songLibrary.find(s => s.id === id))
+                    .filter(Boolean);
+                tpGroups = groupByConsecutiveStyle(songs);
+                tpCurrentPage = 0;
+                mainView.classList.add('hidden');
+                teleprompterView.classList.remove('hidden');
+                document.addEventListener('keydown', handleTeleprompterKeys);
+                renderTeleprompterPage();
+            };
+
+            closeTeleprompterBtn.addEventListener('click', closeTeleprompter);
+            tpPrevBtn.addEventListener('click', () => { if (tpCurrentPage > 0) { tpCurrentPage--; renderTeleprompterPage(); } });
+            tpNextBtn.addEventListener('click', () => { if (tpCurrentPage < tpGroups.length - 1) { tpCurrentPage++; renderTeleprompterPage(); } });
+            tpCol1Btn.addEventListener('click', () => { tpColumns = 1; renderTeleprompterPage(); });
+            tpCol2Btn.addEventListener('click', () => { tpColumns = 2; renderTeleprompterPage(); });
+
+            checkLicense();
+        });
+    </script>
+</body>
+
+</html>
