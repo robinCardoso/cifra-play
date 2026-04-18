@@ -15,6 +15,7 @@ export const LibraryProvider = ({ children }) => {
   const [isStageMode, setIsStageMode] = useState(false);
   const [isListModalOpen, setIsListModalOpen] = useState(false);
   const [isTeleprompterOpen, setIsTeleprompterOpen] = useState(false);
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState({ isOpen: false, title: '', message: '', onConfirm: null });
 
   const requestConfirm = (title, message, onConfirm) => {
@@ -67,6 +68,10 @@ export const LibraryProvider = ({ children }) => {
     return newRep;
   };
 
+  const updateRepertoire = (id, updates) => {
+    persistenceSet.setRepertoires(prev => prev.map(r => r.id === id ? { ...r, ...updates } : r));
+  };
+
   const deleteRepertoire = (id) => {
     requestConfirm(
       'Excluir Repertório',
@@ -92,11 +97,13 @@ export const LibraryProvider = ({ children }) => {
     isStageMode, setIsStageMode,
     isListModalOpen, setIsListModalOpen,
     isTeleprompterOpen, setIsTeleprompterOpen,
+    isSettingsModalOpen, setIsSettingsModalOpen,
     confirmDialog, closeConfirm, requestConfirm,
     addSong,
     updateSong,
     deleteSong,
     addRepertoire,
+    updateRepertoire,
     deleteRepertoire
   };
 

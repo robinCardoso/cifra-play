@@ -6,15 +6,23 @@ import {
   Trash, 
   MusicNote, 
   MicrophoneStage,
-  MusicNotes
+  MusicNotes,
+  PencilSimple
 } from '@phosphor-icons/react';
 
 const SongEditor = () => {
     const { 
         activeSong, updateSong, deleteSong,
         artists, keys, styles,
-        setIsListModalOpen
+        setIsListModalOpen, fontSize, columnCount
     } = useLibrary();
+
+    // Cálculo dinâmico das guias baseado no tamanho da letra e colunas do palco
+    // Assumimos um palco padrão de 45rem de altura útil
+    const linesPerColumn = Math.max(8, Math.floor(45 / (fontSize || 1.5)));
+    const totalLinesPerPage = linesPerColumn * (columnCount || 1); // Multiplica pela qtd de colunas
+    const editorLineHeight = 1.625; // leading-relaxed
+    const pageBreakInterval = totalLinesPerPage * editorLineHeight;
 
     const textareaRef = useRef(null);
     const audioInputRef = useRef(null);
@@ -54,14 +62,17 @@ const SongEditor = () => {
             {/* Cabeçalho do Editor */}
             <div className="flex-shrink-0 space-y-4 mb-6">
                 <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                    <input 
-                        type="text" 
-                        value={activeSong.title}
-                        onChange={(e) => handleFieldChange('title', e.target.value)}
-                        placeholder="Título da Música"
-                        className="text-4xl font-black bg-transparent border-none focus:ring-0 focus:outline-none p-0 w-full text-slate-900 dark:text-white placeholder-slate-400"
-                    />
-                    
+                    <div className="group relative w-full lg:w-1/2 flex items-center">
+                        <input 
+                            type="text" 
+                            value={activeSong.title}
+                            onChange={(e) => handleFieldChange('title', e.target.value)}
+                            placeholder="Título da Música"
+                            title="Clique para editar o nome da música"
+                            className="text-3xl md:text-4xl font-black bg-transparent border-b-2 border-transparent focus:border-indigo-500/50 outline-none hover:bg-slate-200/50 dark:hover:bg-slate-800/50 rounded-t-xl px-2 py-1 w-full text-slate-900 dark:text-white placeholder-slate-400 focus:ring-0 transition-all pr-12"
+                        />
+                        <PencilSimple size={24} weight="bold" className="absolute right-3 text-indigo-500/50 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+                    </div>
                     <div className="flex items-center gap-2 self-end lg:self-center">
                         <button 
                             onClick={exportLyrics}
@@ -171,15 +182,51 @@ const SongEditor = () => {
             <div className="flex-1 flex flex-col bg-white dark:bg-slate-950 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-inner overflow-hidden">
                 <div className="flex-shrink-0 border-b border-slate-100 dark:border-slate-800 p-4 flex items-center justify-between">
                     <span className="text-xs font-black uppercase tracking-widest text-slate-400">Letra e Cifras</span>
-                    <div className="text-[10px] text-slate-500 font-mono">DICA: Use [D] para acordes</div>
+                    <div className="flex items-center gap-4">
+                        <div className="hidden sm:flex items-center gap-1.5 overflow-hidden">
+                           <div className="w-2 h-2 rounded-full bg-slate-200 dark:bg-slate-800 border-r border-dashed border-indigo-500/50"></div>
+                           <span className="text-[10px] text-slate-500 font-bold uppercase tracking-tighter">Guia de Quebra</span>
+                        </div>
+                        <div className="text-[10px] text-slate-500 font-mono">DICA: Use [D] para acordes</div>
+                    </div>
                 </div>
-                <textarea 
-                    ref={textareaRef}
-                    value={activeSong.lyrics}
-                    onChange={(e) => handleFieldChange('lyrics', e.target.value)}
-                    placeholder="Cole aqui sua letra com cifras..."
-                    className="flex-1 w-full bg-transparent p-6 md:p-8 outline-none resize-none font-mono text-base md:text-lg leading-relaxed text-slate-700 dark:text-slate-300 placeholder-slate-300 dark:placeholder-slate-800"
-                />
+                
+                <div className="flex-1 relative overflow-hidden group">
+                    <textarea 
+                        ref={textareaRef}
+                        value={activeSong.lyrics}
+                        onChange={(e) => handleFieldChange('lyrics', e.target.value)}
+                        placeholder="Cole aqui sua letra com cifras..."
+                        className="h-full w-full bg-transparent p-8 outline-none resize-none font-mono text-base md:text-lg leading-relaxed text-slate-700 dark:text-slate-300 placeholder-slate-300 dark:placeholder-slate-800 relative z-30"
+                        style={{ 
+                            backgroundImage: `
+                                linear-gradient(to bottom, transparent calc(${pageBreakInterval}rem - 0.05rem), rgba(245, 158, 11, 0.5) calc(${pageBreakInterval}rem - 0.05rem), rgba(245, 158, 11, 0.5) calc(${pageBreakInterval}rem + 0.05rem), transparent calc(${pageBreakInterval}rem + 0.05rem)),
+                                linear-gradient(to bottom, rgba(99, 102, 241, 0.05) 1px, transparent 1px)
+                            `,
+                            backgroundSize: `100% ${pageBreakInterval}rem, 100% ${editorLineHeight}rem`,
+                            backgroundAttachment: 'local',
+                            backgroundRepeat: 'repeat-y'
+                        }}
+                    />
+                    
+                    {/* Etiqueta Flutuante de Largura (Fixa na lateral) */}
+                    <div 
+                        className="absolute top-0 bottom-0 pointer-events-none border-r border-dashed border-indigo-500/30 z-40 transition-opacity"
+                        style={{ left: 'calc(60ch + 2rem)' }}
+                    >
+                        <div className="sticky top-0 bg-indigo-600/90 text-[9px] font-black px-1.5 py-0.5 rounded-br-lg text-white opacity-0 group-hover:opacity-100 transition-opacity shadow-lg">
+                            LIMITE LARGURA
+                        </div>
+
+                        {/* Indicador de Fim de Página Baseado na Fonte */}
+                        <div 
+                            className="absolute right-4 text-[8px] font-black text-amber-500/80 tracking-widest uppercase flex items-center gap-1"
+                            style={{ top: `${pageBreakInterval}rem`, transform: 'translateY(-100%)' }}
+                        >
+                            Quebra de Página (Letra {fontSize} | {columnCount || 1} {columnCount === 1 ? 'Coluna' : 'Colunas'}) ↓
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     );

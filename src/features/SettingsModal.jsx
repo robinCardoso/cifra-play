@@ -1,0 +1,160 @@
+import React, { useRef, useState } from 'react';
+import { useLibrary } from '../store/LibraryContext';
+import { X, Moon, Sun, Key, DownloadSimple, UploadSimple, CheckCircle, Warning } from '@phosphor-icons/react';
+
+const SettingsModal = () => {
+    const { 
+        isSettingsModalOpen, setIsSettingsModalOpen,
+        theme, setTheme,
+        licenseKey, isLicensed, activateLicense, licenseError,
+        songLibrary, repertoires, artists, keys, styles,
+        setSongLibrary, setRepertoires, setArtists, setKeys, setStyles,
+        requestConfirm
+    } = useLibrary();
+
+    const [keyInput, setKeyInput] = useState(licenseKey || '');
+    const [successMsg, setSuccessMsg] = useState('');
+    const fileInputRef = useRef(null);
+
+    if (!isSettingsModalOpen) return null;
+
+    const handleKeySubmission = () => {
+        const success = activateLicense(keyInput);
+        if (success) {
+            setSuccessMsg('Licença ativada com sucesso!');
+            setTimeout(() => setSuccessMsg(''), 3000);
+        }
+    };
+
+    const handleExportBackup = () => {
+        const backupData = { songLibrary, repertoires, artists, keys, styles };
+        const blob = new Blob([JSON.stringify(backupData)], { type: 'application/json' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `CifraPlay_Backup_${new Date().toISOString().split('T')[0]}.json`;
+        link.click();
+    };
+
+    const handleImportBackup = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        requestConfirm(
+            'Restaurar Backup',
+            'Deseja substituir sua biblioteca atual por este backup? As músicas não salvas no backup serão perdidas.',
+            () => {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    try {
+                        const data = JSON.parse(event.target.result);
+                        if (data.songLibrary) setSongLibrary(data.songLibrary);
+                        if (data.repertoires) setRepertoires(data.repertoires);
+                        if (data.artists) setArtists(data.artists);
+                        if (data.keys) setKeys(data.keys);
+                        if (data.styles) setStyles(data.styles);
+                        setSuccessMsg('Biblioteca restaurada com sucesso!');
+                        setTimeout(() => setSuccessMsg(''), 3000);
+                    } catch (err) {
+                        alert('Arquivo de backup inválido.');
+                    }
+                };
+                reader.readAsText(file);
+            }
+        );
+        e.target.value = null; // reseta o input
+    };
+
+    return (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in">
+            <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+                {/* Header */}
+                <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-800/50">
+                    <h2 className="text-xl font-black text-slate-900 dark:text-white">Configurações</h2>
+                    <button onClick={() => setIsSettingsModalOpen(false)} className="p-2 bg-slate-200 dark:bg-slate-700 text-slate-500 rounded-full hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors">
+                        <X size={20} weight="bold" />
+                    </button>
+                </div>
+
+                {/* Content */}
+                <div className="p-6 overflow-y-auto flex flex-col gap-8 space-y-2">
+                    
+                    {/* Aparencia */}
+                    <section className="space-y-3">
+                        <h3 className="text-xs uppercase font-black text-slate-400 tracking-widest">Aparência</h3>
+                        <div className="flex gap-2">
+                            <button 
+                                onClick={() => setTheme('light')}
+                                className={`flex-1 py-3 px-4 rounded-xl flex items-center justify-center gap-2 font-bold text-sm transition-all border ${theme === 'light' ? 'bg-indigo-50 border-indigo-200 text-indigo-600' : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100 dark:bg-slate-800 dark:border-slate-700'}`}
+                            >
+                                <Sun size={18} weight="bold" /> Claro
+                            </button>
+                            <button 
+                                onClick={() => setTheme('dark')}
+                                className={`flex-1 py-3 px-4 rounded-xl flex items-center justify-center gap-2 font-bold text-sm transition-all border ${theme === 'dark' ? 'bg-slate-800 border-indigo-500 text-white' : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100 dark:bg-slate-800 dark:border-slate-700'}`}
+                            >
+                                <Moon size={18} weight="bold" /> Escuro
+                            </button>
+                        </div>
+                    </section>
+
+                    {/* Licença */}
+                    <section className="space-y-3">
+                        <h3 className="text-xs uppercase font-black text-slate-400 tracking-widest">Autenticação (AES)</h3>
+                        <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-3">
+                            <div className="flex items-center gap-2">
+                                {isLicensed ? <CheckCircle size={24} weight="fill" className="text-emerald-500" /> : <Warning size={24} weight="fill" className="text-amber-500" />}
+                                <span className="font-bold text-sm dark:text-white">
+                                    Licença {isLicensed ? 'Ativa e Validada' : 'Aguardando Ativação'}
+                                </span>
+                            </div>
+                            <div className="flex gap-2">
+                                <Key size={20} className="text-slate-400 absolute mt-3 ml-3" />
+                                <input 
+                                    type="text" 
+                                    value={keyInput}
+                                    onChange={e => setKeyInput(e.target.value)}
+                                    placeholder="Insira sua Chave de Licença"
+                                    className="w-full pl-10 pr-4 py-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm focus:ring-2 focus:ring-indigo-500 outline-none font-medium dark:text-slate-200"
+                                />
+                                <button onClick={handleKeySubmission} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-4 rounded-xl text-sm transition-colors">
+                                    Ativar
+                                </button>
+                            </div>
+                            {licenseError && <p className="text-red-500 text-xs font-bold pt-1">{licenseError}</p>}
+                        </div>
+                    </section>
+
+                    {/* Banco de Dados */}
+                    <section className="space-y-3">
+                        <h3 className="text-xs uppercase font-black text-slate-400 tracking-widest">Banco de Dados e Backup</h3>
+                        <div className="grid grid-cols-2 gap-3">
+                            <button onClick={handleExportBackup} className="py-4 px-4 rounded-2xl flex flex-col items-center justify-center gap-2 font-bold text-sm bg-slate-50 hover:bg-indigo-50 text-slate-700 hover:text-indigo-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 dark:hover:text-white transition-all border border-slate-200 dark:border-slate-700 border-b-4 active:border-b active:translate-y-[3px]">
+                                <DownloadSimple size={24} /> Exportar Backup
+                            </button>
+                            
+                            <input 
+                                type="file" 
+                                accept=".json" 
+                                ref={fileInputRef} 
+                                onChange={handleImportBackup} 
+                                className="hidden" 
+                            />
+                            <button onClick={() => fileInputRef.current?.click()} className="py-4 px-4 rounded-2xl flex flex-col items-center justify-center gap-2 font-bold text-sm bg-slate-50 hover:bg-emerald-50 text-slate-700 hover:text-emerald-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 dark:hover:text-emerald-400 transition-all border border-slate-200 dark:border-slate-700 border-b-4 active:border-b active:translate-y-[3px]">
+                                <UploadSimple size={24} /> Restaurar (.json)
+                            </button>
+                        </div>
+                    </section>
+                    
+                    {/* Alertas Rapidos */}
+                    {successMsg && (
+                        <div className="bg-emerald-500 text-center text-white text-xs font-bold p-2 mb-2 rounded-xl animate-in zoom-in-95">
+                            {successMsg}
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+export default SettingsModal;

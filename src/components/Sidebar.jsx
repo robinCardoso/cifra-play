@@ -57,13 +57,13 @@ const Sidebar = () => {
       <section className="flex flex-col gap-2">
         <h2 className="text-[10px] uppercase font-bold tracking-widest text-slate-400 dark:text-slate-500 flex justify-between items-center group">
           Meus Repertórios
-          <PlusCircle size={14} className="opacity-0 group-hover:opacity-100 cursor-pointer" />
+          <PlusCircle size={14} className="opacity-0 group-hover:opacity-100 cursor-pointer" onClick={() => addRepertoire('Novo Repertório')} />
         </h2>
         <div className="flex flex-col gap-1 max-h-48 overflow-y-auto pr-1">
           {repertoires.map(rep => (
             <div 
               key={rep.id}
-              onClick={() => setActiveRepertoireId(rep.id)}
+              onClick={() => { setActiveRepertoireId(rep.id); setActiveSongId(null); }}
               className={`group flex items-center justify-between p-3 rounded-2xl cursor-pointer transition-all ${
                 activeRepertoireId === rep.id 
                 ? 'bg-gradient-to-br from-emerald-400 to-emerald-600 text-white shadow-lg shadow-emerald-500/20' 
@@ -115,7 +115,7 @@ const Sidebar = () => {
             filteredSongs.map(song => (
               <div 
                 key={song.id}
-                onClick={() => setActiveSongId(song.id)}
+                onClick={() => { setActiveSongId(song.id); setActiveRepertoireId(null); }}
                 className={`group flex items-center justify-between p-4 rounded-2xl cursor-pointer border transition-all ${
                   activeSongId === song.id 
                   ? 'bg-gradient-to-br from-indigo-500 to-indigo-700 text-white shadow-xl shadow-indigo-500/20 border-transparent' 

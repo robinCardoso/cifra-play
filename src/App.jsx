@@ -7,6 +7,7 @@ import ListManagerModal from './features/ListManagerModal';
 import Teleprompter from './features/Teleprompter';
 import InstallPWA from './components/InstallPWA';
 import ConfirmModal from './components/ConfirmModal';
+import SettingsModal from './features/SettingsModal';
 
 function AppContent() {
   const { isStageMode, setIsStageMode, confirmDialog, closeConfirm } = useLibrary();
@@ -23,6 +24,7 @@ function AppContent() {
       
       <ListManagerModal />
       <Teleprompter />
+      <SettingsModal />
       <InstallPWA />
 
       <ConfirmModal 

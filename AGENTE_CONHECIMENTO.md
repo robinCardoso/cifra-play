@@ -36,12 +36,20 @@ O **Cifra & Play** agora é uma aplicação **PWA (Progressive Web App)** 100% o
 - Seletores de agrupamento contêm atalho `(+)` para gerenciamento dinâmico de Listas.
 
 ### Modo Palco (Stage Mode)
-- Overlay imersivo em tela inteira (`z-[100]`).
-- Paginação Snap e cálculo inteligente de quebra de página de acordo com tela e tamanho da fonte.
+- **Overlay Imersivo**: Renderizado em tela inteira (`z-[100]`) com fundo `slate-950`.
+- **Paginação Horizontal Nativa**: Utiliza CSS Multi-column (`column-count`). A navegação entre páginas é feita via Javascript calculando `scrollLeft` com a fórmula precisa: `(el.clientWidth + gap) * page`.
+- **Alinhamento Vertical Perfeito**: Para evitar que a coluna da direita comece em altura diferente da esquerda, os recuos superiores (`padding-top`) devem ser aplicados ao container PAI (`main`), enquanto o `column-count` reside no container FILHO (`div`).
+- **Navegação**: Suporta Seta Direita/Espaço para avançar e Seta Esquerda para retroceder, inclusive voltando para a última página da música anterior.
 
-### Teleprompter
-- Agrupamento de músicas por "Blocos Musicais" (Estilos musicais).
-- Visual em grid moderno, prevendo continuação de cifras longas.
+### Teleprompter (Estudo/Blocos)
+- **Arquitetura de Blocos**: Agrupa músicas consecutivas por Estilo.
+- **Escalabilidade de Fontes**: Utiliza funções `clamp` CSS para ajustar o tamanho dos títulos de acordo com a quantidade de itens na tela.
+- **Regra de Hooks**: Todos os Hooks (`useEffect`, `useState`) DEVEM ser declarados no topo do componente, antes de qualquer retorno antecipado, para garantir estabilidade da árvore de renderização.
+
+### Editor de Repertório (Classic Dual-Pane)
+- **Painel Duplo**: Lado esquerdo (Setlist) e Lado direito (Biblioteca Global).
+- **Manipulação**: Implementado com **SortableJS** para Drag & Drop e botões de reordenação manual.
 
 ### PWA Integrado (Offline)
 - Prompt nativo para instalação em Mobile e Desktop através de componente contextual flutuante.
+- Cache de Assets em nível de Service Worker para funcionamento 100% offline.

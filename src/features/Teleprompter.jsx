@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useLibrary } from '../store/LibraryContext';
-import { X, CaretRight, CaretLeft } from '@phosphor-icons/react';
+import { X, CaretRight, CaretLeft, BookOpen, ArrowLeft } from '@phosphor-icons/react';
 
 const Teleprompter = () => {
     const {
@@ -8,96 +8,209 @@ const Teleprompter = () => {
         activeRepertoire, songLibrary
     } = useLibrary();
 
-    const [groupedSongs, setGroupedSongs] = useState({});
-    const [styleList, setStyleList] = useState([]);
-    const [currentStyleIndex, setCurrentStyleIndex] = useState(0);
+    const [tpGroups, setTpGroups] = useState([]);
+    const [currentPage, setCurrentPage] = useState(0);
+    const [tpColumns, setTpColumns] = useState(1);
+    
+    // Para o modal das letras (Overlay)
+    const [selectedSong, setSelectedSong] = useState(null);
 
     useEffect(() => {
         if (!activeRepertoire) return;
 
-        const groups = {};
+        const groups = [];
+        let current = null;
         activeRepertoire.songIds.forEach(id => {
             const song = songLibrary.find(s => s.id === id);
-            if (song) {
-                const style = song.style || 'Outros';
-                if (!groups[style]) groups[style] = [];
-                groups[style].push(song);
+            if (!song) return;
+            const style = song.style || 'Sem Estilo';
+            if (current && current.style === style && current.songs.length < 10) {
+                current.songs.push(song);
+            } else {
+                if (current) groups.push(current);
+                current = { style, songs: [song] };
             }
         });
+        if (current) groups.push(current);
 
-        setGroupedSongs(groups);
-        const styles = Object.keys(groups).sort();
-        setStyleList(styles);
-        setCurrentStyleIndex(0);
+        setTpGroups(groups);
+        setCurrentPage(0);
     }, [activeRepertoire, songLibrary, isTeleprompterOpen]);
 
-    if (!isTeleprompterOpen || !activeRepertoire) return null;
-
-    const currentStyle = styleList[currentStyleIndex];
-    const currentSongs = groupedSongs[currentStyle] || [];
-
     const handleNext = () => {
-        if (currentStyleIndex < styleList.length - 1) {
-            setCurrentStyleIndex(prev => prev + 1);
-        }
+        if (currentPage < tpGroups.length - 1) setCurrentPage(prev => prev + 1);
     };
 
     const handlePrev = () => {
-        if (currentStyleIndex > 0) {
-            setCurrentStyleIndex(prev => prev - 1);
-        }
+        if (currentPage > 0) setCurrentPage(prev => prev - 1);
     };
 
+    useEffect(() => {
+        const handleKeys = (e) => {
+            if (e.key === 'Escape') {
+                if (selectedSong) setSelectedSong(null);
+                else setIsTeleprompterOpen(false);
+            }
+            if (selectedSong) return; // Se o modal está aberto, não navega páginas.
+            if (e.key === 'ArrowRight' || e.key === ' ') handleNext();
+            if (e.key === 'ArrowLeft') handlePrev();
+        };
+        window.addEventListener('keydown', handleKeys);
+        return () => window.removeEventListener('keydown', handleKeys);
+    }, [currentPage, tpGroups, selectedSong]);
+
+    if (!isTeleprompterOpen || !activeRepertoire) return null;
+
+    const group = tpGroups[currentPage];
+    if (!group) return null;
+
+    // Lógica para tamanhos baseada na contagem (como no original)
+    const getTpSizes = (count, cols) => {
+        const perCol = cols === 2 ? Math.ceil(count / 2) : count;
+        if (perCol <= 1) return { styleSize: 'clamp(2.2rem,9vw,5.5rem)', nameSize: 'clamp(1.8rem,7.5vw,4rem)', keySize: 'clamp(1rem,3.5vw,2rem)', gap: 'clamp(1.4rem,3vw,2.5rem)' };
+        if (perCol <= 2) return { styleSize: 'clamp(2rem,8vw,4.5rem)', nameSize: 'clamp(1.5rem,6.5vw,3.2rem)', keySize: 'clamp(0.85rem,3vw,1.75rem)', gap: 'clamp(1.2rem,2.7vw,2.2rem)' };
+        if (perCol <= 3) return { styleSize: 'clamp(1.8rem,7.5vw,3.8rem)', nameSize: 'clamp(1.3rem,5.8vw,2.8rem)', keySize: 'clamp(0.8rem,2.8vw,1.5rem)', gap: 'clamp(1.1rem,2.5vw,2rem)' };
+        if (perCol <= 5) return { styleSize: 'clamp(1.5rem,6.5vw,3rem)', nameSize: 'clamp(1.1rem,4.8vw,2.2rem)', keySize: 'clamp(0.7rem,2.4vw,1.25rem)', gap: 'clamp(0.9rem,2vw,1.6rem)' };
+        if (perCol <= 7) return { styleSize: 'clamp(1.3rem,5.5vw,2.4rem)', nameSize: 'clamp(1rem,4.2vw,1.8rem)', keySize: 'clamp(0.65rem,2.1vw,1rem)', gap: 'clamp(0.8rem,1.8vw,1.3rem)' };
+        return { styleSize: 'clamp(1.1rem,4.8vw,2rem)', nameSize: 'clamp(0.9rem,3.8vw,1.5rem)', keySize: 'clamp(0.6rem,1.9vw,0.9rem)', gap: 'clamp(0.7rem,1.5vw,1rem)' };
+    };
+
+    const sz = getTpSizes(group.songs.length, tpColumns);
+
     return (
-        <div className="fixed inset-0 z-[150] bg-slate-950 text-white flex flex-col font-sans animate-in fade-in duration-300">
-            <header className="flex-shrink-0 bg-slate-900 p-4 flex items-center justify-between border-b border-white/10">
-                <div>
-                    <h2 className="text-xl font-black text-indigo-400">Teleprompter: {activeRepertoire.name}</h2>
-                    <p className="text-xs text-slate-400 uppercase tracking-widest font-bold mt-1">Navegação por Estilo Musical</p>
-                </div>
-                <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-2 bg-slate-800 rounded-xl p-1">
-                        <button onClick={handlePrev} disabled={currentStyleIndex === 0} className="p-2 hover:bg-slate-700 disabled:opacity-30 rounded-lg transition-colors"><CaretLeft size={20} weight="bold" /></button>
-                        <div className="flex flex-col items-center justify-center min-w-[140px]">
-                            <span className="text-sm font-bold text-center leading-none">{currentStyle || '--'}</span>
-                            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Bloco {currentStyleIndex + 1}/{styleList.length}</span>
+        <div className="fixed inset-0 z-[150] bg-[#0a0a0f] text-white flex flex-col font-sans animate-in fade-in duration-300 overflow-hidden">
+            
+            {/* OVERLAY DE LETRA DA MÚSICA */}
+            {selectedSong && (
+                <div className="absolute inset-0 z-[160] flex flex-col bg-[#0a0a0f] animate-in slide-in-from-bottom-5 duration-200">
+                    <header className="flex items-center gap-3 px-5 py-3 flex-shrink-0 bg-black/70 border-b border-white/10">
+                        <button 
+                            onClick={() => setSelectedSong(null)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold text-sm transition-all bg-white/10 hover:bg-white/20 text-slate-200"
+                        >
+                            <ArrowLeft weight="bold" /> Voltar
+                        </button>
+                        <div className="flex-1 min-w-0">
+                            <p className="font-bold text-white truncate text-base leading-none">{selectedSong.title}</p>
+                            <p className="text-xs text-slate-400 mt-0.5 truncate">
+                                {[selectedSong.artist, selectedSong.key ? `Tom: ${selectedSong.key}` : '', selectedSong.style].filter(Boolean).join(' • ')}
+                            </p>
                         </div>
-                        <button onClick={handleNext} disabled={currentStyleIndex >= styleList.length - 1} className="p-2 hover:bg-slate-700 disabled:opacity-30 rounded-lg transition-colors"><CaretRight size={20} weight="bold" /></button>
-                    </div>
-                    <button 
-                        onClick={() => setIsTeleprompterOpen(false)}
-                        className="p-2 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-xl transition-all"
+                    </header>
+                    <div 
+                        className="flex-1 min-h-0 overflow-y-auto px-6 py-5 text-white font-mono"
+                        style={{ fontSize: 'clamp(1rem, 2.5vw, 1.2rem)', lineHeight: 1.9, whiteSpace: 'pre-wrap' }}
                     >
-                        <X size={24} weight="bold" />
-                    </button>
+                        {selectedSong.lyrics || '(sem letra cadastrada para esta música)'}
+                    </div>
                 </div>
+            )}
+
+            {/* HEADER COM CONTROLES */}
+            <header className="flex items-center justify-between px-5 py-2 flex-shrink-0 bg-black/60 border-b border-white/5">
+                <div className="flex items-center gap-3">
+                    <span className="text-xs font-bold uppercase tracking-widest text-indigo-300">Teleprompter</span>
+                    <span className="text-xs text-slate-400 font-mono">Pág. {currentPage + 1} de {tpGroups.length}</span>
+                    <div className="flex items-center rounded overflow-hidden border border-slate-600 ml-2">
+                        <button 
+                            onClick={() => setTpColumns(1)}
+                            className={`px-2 py-0.5 text-xs font-bold transition-colors ${tpColumns === 1 ? 'bg-indigo-500/80 text-white' : 'bg-white/5 text-slate-400'}`}
+                        >
+                            1col
+                        </button>
+                        <button 
+                            onClick={() => setTpColumns(2)}
+                            className={`px-2 py-0.5 text-xs font-bold transition-colors border-l border-white/10 ${tpColumns === 2 ? 'bg-indigo-500/80 text-white' : 'bg-white/5 text-slate-400'}`}
+                        >
+                            2col
+                        </button>
+                    </div>
+                </div>
+                <button 
+                    onClick={() => setIsTeleprompterOpen(false)}
+                    className="flex items-center gap-1.5 px-3 py-1 bg-red-600 hover:bg-red-700 rounded text-sm font-semibold transition-colors"
+                >
+                    <X weight="bold" /> Fechar
+                </button>
             </header>
 
-            <main className="flex-1 overflow-x-hidden overflow-y-auto p-4 md:p-8 bg-black/20">
-                {currentSongs.length > 0 ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                        {currentSongs.map(song => (
-                            <div key={song.id} className="bg-slate-900 border border-white/5 rounded-3xl p-6 shadow-xl flex flex-col gap-4 hover:border-indigo-500/30 transition-colors">
-                                <div className="border-b border-white/10 pb-4">
-                                    <h3 className="text-2xl font-black leading-tight text-white mb-1">{song.title}</h3>
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-sm text-slate-400 uppercase tracking-wider font-bold">{song.artist || 'Desconhecido'}</span>
-                                        <span className="bg-indigo-500/20 text-indigo-300 font-black text-sm px-3 py-1 rounded-lg">{song.key || '--'}</span>
-                                    </div>
-                                </div>
-                                <div className="text-base md:text-lg leading-relaxed text-slate-300 font-mono line-clamp-[12]">
-                                    {song.lyrics?.split('\n').filter(l => l.trim()).slice(0, 12).map((line, i) => (
-                                        <div key={i} dangerouslySetInnerHTML={{ __html: line.replace(/\[([^\]]+)\]/g, '<span class="text-emerald-400 font-bold bg-emerald-400/10 px-1 rounded mx-0.5">[$1]</span>') }} />
-                                    ))}
-                                    {song.lyrics?.split('\n').length > 12 && <div className="text-indigo-400 mt-2 text-sm italic">...continua no Modo Palco</div>}
+            {/* CORPO PRINCIPAL */}
+            <div className="flex-1 min-h-0 flex flex-col items-center justify-start px-8 pt-10 pb-6 overflow-y-auto">
+                <div className="text-center w-full max-w-5xl">
+                    <div 
+                        className="font-black uppercase bg-clip-text text-transparent bg-gradient-to-br from-indigo-300 to-indigo-500 leading-none"
+                        style={{ fontSize: sz.styleSize, marginBottom: sz.gap, letterSpacing: '0.18em' }}
+                    >
+                        {group.style}
+                    </div>
+                    <div style={{ width: '5rem', height: '3px', background: 'linear-gradient(90deg, #4f46e5, #818cf8)', borderRadius: '2px', margin: `0 auto ${sz.gap}` }}></div>
+                    
+                    <div 
+                        style={{ 
+                            display: tpColumns === 2 ? 'grid' : 'block',
+                            gridTemplateColumns: tpColumns === 2 ? '1fr 1fr' : 'none',
+                            gap: tpColumns === 2 ? '0 3rem' : '0',
+                            textAlign: tpColumns === 2 ? 'left' : 'center'
+                        }}
+                    >
+                        {group.songs.map((song, i) => (
+                            <div 
+                                key={song.id + '-' + i} 
+                                onClick={() => setSelectedSong(song)}
+                                className="group cursor-pointer rounded-lg px-2 py-1 transition-colors hover:bg-white/5"
+                                style={{ marginBottom: sz.gap }}
+                            >
+                                <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: tpColumns === 2 ? 'flex-start' : 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                                    <span style={{ fontSize: sz.nameSize, fontWeight: 800, color: '#ffffff', lineHeight: 1.2, letterSpacing: '-0.01em' }}>
+                                        {song.title || 'Sem Título'}
+                                    </span>
+                                    {song.key && (
+                                        <span style={{ fontSize: sz.keySize, color: '#6ee7b7', fontWeight: 700, letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>
+                                            Tom: {song.key}
+                                        </span>
+                                    )}
+                                    <BookOpen weight="bold" style={{ fontSize: sz.keySize, color: 'rgba(255,255,255,0.3)', marginLeft: '0.2rem' }} className="opacity-0 group-hover:opacity-100 transition-opacity" />
                                 </div>
                             </div>
                         ))}
                     </div>
-                ) : (
-                    <div className="flex items-center justify-center h-full text-slate-500 font-bold">Nenhuma música neste bloco.</div>
-                )}
-            </main>
+                </div>
+            </div>
+
+            {/* RODAPÉ */}
+            <footer className="flex items-center justify-between px-6 py-3 flex-shrink-0 bg-black/60 border-t border-white/5">
+                <button 
+                    onClick={handlePrev}
+                    disabled={currentPage === 0}
+                    className="flex items-center gap-2 px-5 py-2 rounded-lg font-semibold text-sm transition-all text-slate-200 hover:text-white bg-white/5 disabled:opacity-30 disabled:pointer-events-none"
+                >
+                    <CaretLeft weight="bold" /> Anterior
+                </button>
+                <div className="flex items-center gap-2">
+                    {tpGroups.map((g, i) => (
+                        <span 
+                            key={i} 
+                            title={g.style}
+                            style={{
+                                width: i === currentPage ? '1.8rem' : '0.5rem',
+                                height: '0.5rem',
+                                borderRadius: '9999px',
+                                background: i === currentPage ? '#6366f1' : 'rgba(255,255,255,0.2)',
+                                transition: 'all 0.3s',
+                                display: 'inline-block'
+                            }}
+                        />
+                    ))}
+                </div>
+                <button 
+                    onClick={handleNext}
+                    disabled={currentPage >= tpGroups.length - 1}
+                    className="flex items-center gap-2 px-5 py-2 rounded-lg font-semibold text-sm transition-all text-slate-200 hover:text-white bg-white/5 disabled:opacity-30 disabled:pointer-events-none"
+                >
+                    Próximo <CaretRight weight="bold" />
+                </button>
+            </footer>
+
         </div>
     );
 };
