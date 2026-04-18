@@ -8,7 +8,8 @@ import {
   MicrophoneStage,
   MusicNotes,
   PencilSimple,
-  Columns
+  Columns,
+  CaretLeft
 } from '@phosphor-icons/react';
 
 const SongEditor = () => {
@@ -89,14 +90,21 @@ const SongEditor = () => {
             {/* Cabeçalho do Editor */}
             <div className="flex-shrink-0 space-y-4 mb-6">
                 <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                    <div className="group relative w-full lg:w-1/2 flex items-center">
+                    <div className="group relative w-full lg:w-1/2 flex items-center gap-3">
+                        <button 
+                            onClick={() => setActiveSongId(null)}
+                            className="group flex items-center gap-2 px-4 py-2 bg-slate-200/50 dark:bg-slate-800/50 hover:bg-slate-300 dark:hover:bg-slate-700 rounded-xl transition-all text-slate-600 dark:text-slate-300 hover:text-indigo-500 font-bold text-sm border border-transparent hover:border-indigo-500/30"
+                        >
+                            <CaretLeft size={20} weight="bold" className="group-hover:-translate-x-1 transition-transform" />
+                            <span>Voltar</span>
+                        </button>
                         <input 
                             type="text" 
                             value={activeSong.title}
                             onChange={(e) => handleFieldChange('title', e.target.value)}
                             placeholder="Título da Música"
                             title="Clique para editar o nome da música"
-                            className="text-3xl md:text-4xl font-black bg-transparent border-b-2 border-transparent focus:border-indigo-500/50 outline-none hover:bg-slate-200/50 dark:hover:bg-slate-800/50 rounded-t-xl px-2 py-1 w-full text-slate-900 dark:text-white placeholder-slate-400 focus:ring-0 transition-all pr-12"
+                            className="text-3xl md:text-4xl font-black bg-transparent border-b-2 border-transparent focus:border-indigo-500/50 outline-none hover:bg-slate-200/50 dark:hover:bg-slate-800/50 rounded-xl px-2 py-1 w-full text-slate-900 dark:text-white placeholder-slate-400 focus:ring-0 transition-all pr-12"
                         />
                         <PencilSimple size={24} weight="bold" className="absolute right-3 text-indigo-500/50 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
                     </div>
