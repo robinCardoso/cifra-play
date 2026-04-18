@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useLibrary } from '../store/LibraryContext';
 import { 
   PlusCircle, 
@@ -7,14 +7,16 @@ import {
   MusicNote, 
   MicrophoneStage,
   MusicNotes,
-  PencilSimple
+  PencilSimple,
+  Columns
 } from '@phosphor-icons/react';
 
 const SongEditor = () => {
     const { 
         activeSong, updateSong, deleteSong,
         artists, keys, styles,
-        setIsListModalOpen, fontSize, columnCount
+        setIsListModalOpen, fontSize, columnCount,
+        setIsStageMode, setActiveSongId
     } = useLibrary();
 
     // Cálculo dinâmico das guias baseado no tamanho da letra e colunas do palco
@@ -59,6 +61,27 @@ const SongEditor = () => {
         a.download = `${activeSong.title || 'musica'}.txt`;
         a.click();
     };
+
+    // Função de formatação importada do StageMode para o Live Preview
+    const formatLyrics = (text) => {
+        if (!text) return null;
+        const stanzas = text.split(/\n\s*\n/);
+        return stanzas.map((stanza, stanzaIndex) => {
+            const lines = stanza.split('\n');
+            return (
+                <div key={stanzaIndex} className="lyric-stanza mb-[1.5em] break-inside-avoid relative">
+                    {lines.map((line, lineIndex) => {
+                        const formattedLine = line.replace(/\[([^\]]+)\]/g, '<span class="chord font-bold text-indigo-400">[$1]</span>');
+                        return (
+                            <div key={lineIndex} className="lyric-line break-words whitespace-pre-wrap" dangerouslySetInnerHTML={{ __html: formattedLine || '&nbsp;' }} />
+                        );
+                    })}
+                </div>
+            );
+        });
+    };
+
+    const activeCols = activeSong?.columns || columnCount || 1;
 
     return (
         <div className="flex-1 flex flex-col overflow-hidden bg-slate-50 dark:bg-slate-900 p-4 md:p-8 animate-in fade-in duration-500">
@@ -199,16 +222,35 @@ const SongEditor = () => {
                 </div>
             </div>
 
-            {/* Editor de Letras */}
+            {/* Editor de Letras Original e Limpo */}
             <div className="flex-1 flex flex-col bg-white dark:bg-slate-950 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-inner overflow-hidden">
                 <div className="flex-shrink-0 border-b border-slate-100 dark:border-slate-800 p-4 flex items-center justify-between">
                     <span className="text-xs font-black uppercase tracking-widest text-slate-400">Letra e Cifras</span>
                     <div className="flex items-center gap-4">
-                        <div className="hidden sm:flex items-center gap-1.5 overflow-hidden">
-                           <div className="w-2 h-2 rounded-full bg-slate-200 dark:bg-slate-800 border-r border-dashed border-indigo-500/50"></div>
-                           <span className="text-[10px] text-slate-500 font-bold uppercase tracking-tighter">Guia de Quebra</span>
+                        {/* Botão para Testar no Palco */}
+                        <button 
+                            onClick={() => {
+                                setActiveSongId(activeSong.id);
+                                setIsStageMode(true);
+                            }}
+                            className="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all shadow-md"
+                        >
+                            Ver no Palco
+                        </button>
+
+                        <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800/50 p-1 rounded-lg">
+                            <Columns size={14} className="text-slate-400 ml-1" />
+                            <div className="flex">
+                                <button 
+                                    onClick={() => handleFieldChange('columns', 1)}
+                                    className={`px-2 py-0.5 text-[10px] font-bold rounded uppercase transition-all ${activeCols === 1 ? 'bg-white dark:bg-slate-700 text-indigo-500 shadow-sm' : 'text-slate-400 hover:text-slate-600'} `}
+                                >1 Col</button>
+                                <button 
+                                    onClick={() => handleFieldChange('columns', 2)}
+                                    className={`px-2 py-0.5 text-[10px] font-bold rounded uppercase transition-all ${activeCols === 2 ? 'bg-white dark:bg-slate-700 text-indigo-500 shadow-sm' : 'text-slate-400 hover:text-slate-600'} `}
+                                >2 Cols</button>
+                            </div>
                         </div>
-                        <div className="text-[10px] text-slate-500 font-mono">DICA: Use [D] para acordes</div>
                     </div>
                 </div>
                 
@@ -230,24 +272,6 @@ const SongEditor = () => {
                             backgroundRepeat: 'repeat-y'
                         }}
                     />
-                    
-                    {/* Etiqueta Flutuante de Largura (Fixa na lateral) */}
-                    <div 
-                        className="absolute top-0 bottom-0 pointer-events-none border-r border-dashed border-indigo-500/30 z-40 transition-opacity"
-                        style={{ left: 'calc(60ch + 2rem)' }}
-                    >
-                        <div className="sticky top-0 bg-indigo-600/90 text-[9px] font-black px-1.5 py-0.5 rounded-br-lg text-white opacity-0 group-hover:opacity-100 transition-opacity shadow-lg">
-                            LIMITE LARGURA
-                        </div>
-
-                        {/* Indicador de Fim de Página Baseado na Fonte */}
-                        <div 
-                            className="absolute right-4 text-[8px] font-black text-amber-500/80 tracking-widest uppercase flex items-center gap-1"
-                            style={{ top: `${pageBreakInterval}rem`, transform: 'translateY(-100%)' }}
-                        >
-                            Quebra de Página (Letra {fontSize} | {columnCount || 1} {columnCount === 1 ? 'Coluna' : 'Colunas'}) ↓
-                        </div>
-                    </div>
                 </div>
             </div>
         </div>

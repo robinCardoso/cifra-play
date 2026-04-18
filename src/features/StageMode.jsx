@@ -9,7 +9,8 @@ import {
   ArrowsOut, 
   ArrowsIn,
   MagnifyingGlass,
-  ArrowUUpLeft
+  ArrowUUpLeft,
+  MusicNotes
 } from '@phosphor-icons/react';
 
 const StageMode = ({ onClose }) => {
@@ -18,9 +19,11 @@ const StageMode = ({ onClose }) => {
         songLibrary, 
         fontSize, setFontSize,
         columnCount, setColumnCount,
-        activeSongId
+        activeSongId,
+        updateSong
     } = useLibrary();
 
+    const [isEditing, setIsEditing] = useState(false);
     const [currentIndex, setCurrentIndex] = useState(() => {
         if (activeSongId && activeRepertoire) {
             const index = activeRepertoire.songIds.indexOf(activeSongId);
@@ -40,6 +43,7 @@ const StageMode = ({ onClose }) => {
 
     const lyricsViewRef = useRef(null);
 
+
     const toggleFullscreen = () => {
         if (!document.fullscreenElement) {
             document.documentElement.requestFullscreen().catch(e => console.error(e));
@@ -47,17 +51,30 @@ const StageMode = ({ onClose }) => {
             if (document.exitFullscreen) document.exitFullscreen();
         }
     };
-    const currentSongId = activeRepertoire?.songIds[currentIndex];
-    const currentSong = offScriptSong || songLibrary.find(s => s.id === currentSongId);
+    const resolvedSongId = activeRepertoire?.songIds[currentIndex] || activeSongId;
+    const currentSong = offScriptSong || songLibrary.find(s => s.id === resolvedSongId);
     const nextSongId = activeRepertoire?.songIds[currentIndex + 1];
     const nextSong = offScriptSong ? null : songLibrary.find(s => s.id === nextSongId);
+
+    // Motor de Decisão de Colunas (Prioridade: Preferência da Música > Configuração Global)
+    const activeCols = currentSong?.columns || columnCount || 1;
+
+    // Sincroniza o contenteditable com o texto da música quando o modo Editor abre
+    useEffect(() => {
+        if (isEditing && lyricsViewRef.current && currentSong) {
+            const el = lyricsViewRef.current;
+            if (el.innerText !== (currentSong.lyrics || '')) {
+                el.innerText = currentSong.lyrics || '';
+            }
+        }
+    }, [isEditing, resolvedSongId]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Formatação de cifras para exibição
     const formatLyrics = (text) => {
         if (!text) return null;
         
-        // Divide as letras em Estrofes baseadas em linhas em branco
-        const stanzas = text.split(/\n\s*\n/);
+        // Divide as letras em Estrofes baseadas em linhas em branco e limpa vazios
+        const stanzas = text.split(/\n\s*\n/).filter(s => s.trim());
         
         return stanzas.map((stanza, stanzaIndex) => {
             const lines = stanza.split('\n');
@@ -75,36 +92,52 @@ const StageMode = ({ onClose }) => {
         });
     };
 
-    // Calcular páginas sempre que a música ou o tamanho da fonte mudar
+    // Calcular páginas sempre que a música, fonte, colunas ou LETRA mudar
     useEffect(() => {
+        let rafId;
         const calculatePages = () => {
             if (lyricsViewRef.current) {
                 const el = lyricsViewRef.current;
-                const style = window.getComputedStyle(el);
-                const gap = parseFloat(style.columnGap) || 64; // 4rem default
-                const viewWidth = el.clientWidth + gap;
-                const totalScroll = el.scrollWidth + gap;
                 
-                const pages = Math.ceil(totalScroll / viewWidth) || 1;
+                // SEGURANÇA: Se a altura for muito pequena ou zero (durante o reflow), 
+                // não mede, pois os resultados serão fantasmas.
+                if (el.clientHeight < 100) return;
+
+                const style = window.getComputedStyle(el);
+                
+                const padL = parseFloat(style.paddingLeft) || 0;
+                const padR = parseFloat(style.paddingRight) || 0;
+                const padSum = padL + padR;
+                const gap = 64; 
+                
+                const step = el.clientWidth - padSum + gap;
+                const totalWidth = el.scrollWidth - padSum + gap;
+                
+                const pages = Math.max(1, Math.round(totalWidth / step));
                 setTotalPages(pages);
-                setCurrentPage(0);
-                el.scrollTo({ left: 0, behavior: 'instant' });
+                
+                // Sincroniza a página atual para não ficar em um índice inexistente
+                if (currentPage >= pages) {
+                    setCurrentPage(0);
+                    el.scrollTo({ left: 0, behavior: 'instant' });
+                }
             }
         };
 
-        const timer = setTimeout(calculatePages, 150); // Delay para renderização nativa das colunas
-        return () => clearTimeout(timer);
-    }, [currentSongId, fontSize, columnCount, activeRepertoire]);
+        rafId = requestAnimationFrame(() => {
+            rafId = requestAnimationFrame(calculatePages);
+        });
+
+        return () => cancelAnimationFrame(rafId);
+    }, [resolvedSongId, fontSize, activeCols, activeRepertoire, currentSong?.lyrics, isEditing]);
 
     const scrollToPage = (page) => {
         if (lyricsViewRef.current) {
             const el = lyricsViewRef.current;
-            const style = window.getComputedStyle(el);
-            const gap = parseFloat(style.columnGap) || 64;
-            const viewWidth = el.clientWidth + gap;
+            const step = el.clientWidth - 128 + 64; // 128 (padding total 64+64) + 64 (gap)
             
             el.scrollTo({
-                left: page * viewWidth,
+                left: page * step,
                 behavior: 'smooth'
             });
             setCurrentPage(page);
@@ -176,7 +209,7 @@ const StageMode = ({ onClose }) => {
         }
     }, [isSearchOpen]);
 
-    if (!activeRepertoire || !currentSong) return null;
+    if (!currentSong) return null;
 
     // Filtro de Busca
     const filteredSearch = songLibrary.filter(s => 
@@ -195,9 +228,13 @@ const StageMode = ({ onClose }) => {
                             <span className="text-amber-500 text-[10px] font-black uppercase tracking-widest flex items-center gap-1">
                                 <ArrowUUpLeft weight="bold"/> Fora de Roteiro
                             </span>
-                        ) : (
+                        ) : activeRepertoire ? (
                             <span className="text-indigo-400 text-[10px] font-black uppercase tracking-widest leading-none">
                                 Música {currentIndex + 1}/{activeRepertoire.songIds.length}
+                            </span>
+                        ) : (
+                            <span className="text-indigo-400 text-[10px] font-black uppercase tracking-widest leading-none flex items-center gap-1">
+                                <MusicNotes weight="bold" /> Ensaio Avulso
                             </span>
                         )}
                         <h2 className={`text-xl font-black truncate max-w-xs md:max-w-md ${offScriptSong ? 'text-amber-400' : ''}`}>
@@ -231,15 +268,34 @@ const StageMode = ({ onClose }) => {
                         <span className="hidden lg:inline mr-1">Buscar</span>
                     </button>
 
-                    {/* Botões de Navegação */}
-                    <div className="flex items-center bg-white/5 rounded-2xl p-1 gap-1 border border-white/10">
-                        <button onClick={handlePrev} className="p-2 hover:bg-white/10 rounded-xl transition-all"><CaretLeft size={20} weight="bold" /></button>
-                        <span className="text-xs font-bold px-2 whitespace-nowrap opacity-60">Pág. {currentPage + 1}/{totalPages}</span>
-                        <button onClick={handleNext} className="p-2 hover:bg-white/10 rounded-xl transition-all"><CaretRight size={20} weight="bold" /></button>
-                    </div>
+                    {/* Botões de Navegação (Só mostra se houver repertório) */}
+                    {activeRepertoire && (
+                        <div className="flex items-center bg-white/5 rounded-2xl p-1 gap-1 border border-white/10">
+                            <button onClick={handlePrev} className="p-2 hover:bg-white/10 rounded-xl transition-all"><CaretLeft size={20} weight="bold" /></button>
+                            <span className="text-xs font-bold px-2 whitespace-nowrap opacity-60">Pág. {currentPage + 1}/{totalPages}</span>
+                            <button onClick={handleNext} className="p-2 hover:bg-white/10 rounded-xl transition-all"><CaretRight size={20} weight="bold" /></button>
+                        </div>
+                    )}
+                    
+                    {/* Paginação Isolada (Para Música Avulsa) */}
+                    {!activeRepertoire && (
+                        <div className="flex items-center bg-white/5 rounded-2xl py-1 px-3 gap-1 border border-white/10">
+                            <span className="text-xs font-bold px-2 whitespace-nowrap opacity-60">Pág. {currentPage + 1}/{totalPages}</span>
+                        </div>
+                    )}
 
-                    {/* Controles de Estilo */}
+                    {/* Controles de Estilo e Edição */}
                     <div className="hidden lg:flex items-center gap-1">
+                        <button 
+                            onClick={() => setIsEditing(!isEditing)}
+                            className={`px-3 py-1.5 rounded-xl transition-all text-xs font-bold tracking-wider uppercase flex items-center gap-2 ${isEditing ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20' : 'bg-white/10 text-slate-300 hover:bg-white/20'}`}
+                            title="Editar Letra ao Vivo"
+                        >
+                            {isEditing ? 'Sair do Modo Edição' : 'Editar'}
+                        </button>
+                        
+                        <div className="w-px h-6 bg-white/10 mx-1" />
+
                         <button onClick={() => setFontSize(prev => Math.max(0.8, prev - 0.2))} className="p-2 hover:bg-white/10 rounded-xl"><TextT size={18} /></button>
                         <button onClick={() => setFontSize(prev => Math.min(4, prev + 0.2))} className="p-2 hover:bg-white/10 rounded-xl"><TextT size={24} weight="bold" /></button>
                         <div className="w-px h-6 bg-white/10 mx-1" />
@@ -267,22 +323,52 @@ const StageMode = ({ onClose }) => {
                 </div>
             </header>
 
-            {/* Visualizador de Letras */}
-            <main 
-                ref={lyricsViewRef}
-                className="flex-1 overflow-x-hidden overflow-y-hidden py-8 px-4 md:py-16 md:px-16"
-                style={{ 
-                    fontSize: `${fontSize}rem`,
-                    columnCount: columnCount,
-                    columnGap: '4rem',
-                    columnWidth: columnCount === 1 ? '100%' : 'auto',
-                    columnFill: 'auto'
-                }}
-            >
-                <div className="w-full">
+            {/* Modo Edição: mesmo layout do palco mas com contentEditable */}
+            {isEditing ? (
+                <main
+                    key="editor"
+                    ref={lyricsViewRef}
+                    contentEditable
+                    suppressContentEditableWarning
+                    onInput={(e) => {
+                        updateSong(currentSong.id, { lyrics: e.currentTarget.innerText });
+                    }}
+                    className="flex-1 overflow-x-hidden overflow-y-auto py-8 outline-none caret-amber-400 selection:bg-amber-500/30"
+                    style={{
+                        paddingLeft: '64px',
+                        paddingRight: '64px',
+                        fontSize: `${fontSize}rem`,
+                        columnCount: activeCols,
+                        columnGap: '64px',
+                        columnWidth: activeCols === 1 ? '100%' : 'auto',
+                        columnFill: 'auto',
+                        whiteSpace: 'pre-wrap',
+                        wordBreak: 'break-word',
+                        color: '#cbd5e1',
+                        lineHeight: '1.6',
+                        fontFamily: 'inherit',
+                        cursor: 'text',
+                    }}
+                />
+            ) : (
+                <main 
+                    key="viewer"
+                    ref={lyricsViewRef}
+                    className="flex-1 overflow-x-hidden overflow-y-hidden py-8"
+                    style={{ 
+                        paddingLeft: '64px',
+                        paddingRight: '64px',
+                        fontSize: `${fontSize}rem`,
+                        lineHeight: '1.6',
+                        columnCount: activeCols,
+                        columnGap: '64px',
+                        columnWidth: activeCols === 1 ? '100%' : 'auto',
+                        columnFill: 'auto'
+                    }}
+                >
                     {formatLyrics(currentSong.lyrics)}
-                </div>
-            </main>
+                </main>
+            )}
 
             {/* Modal de Busca Rápida (Off-Script) */}
             {isSearchOpen && (
@@ -361,20 +447,19 @@ const StageMode = ({ onClose }) => {
 
             {/* Estilos específicos para o Modo Palco */}
             <style dangerouslySetInnerHTML={{ __html: `
+                .lyric-stanza {
+                    margin-bottom: 1.6em;
+                    position: relative;
+                }
                 .lyric-line {
                     display: block;
-                    margin-bottom: 0.2em;
-                    break-inside: avoid-column;
+                    line-height: 1.6;
+                    margin-bottom: 0;
                 }
                 .chord {
                     color: #4ade80;
-                    font-weight: 800;
-                    font-family: monospace;
-                    background: rgba(74, 222, 128, 0.1);
-                    padding: 0 4px;
-                    border-radius: 6px;
-                    display: inline-block;
-                    margin-bottom: 4px;
+                    font-weight: 700;
+                    font-family: inherit;
                 }
                 main {
                     column-fill: auto;

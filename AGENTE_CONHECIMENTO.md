@@ -31,6 +31,44 @@ O **Cifra & Play** agora é uma aplicação **PWA (Progressive Web App)** 100% o
 
 ## 4. Funcionalidades Principais Implementadas
 
+## 🎤 StageMode & Renderização (Modernização)
+
+### 1. Motor Unificado (Live Editor)
+O `StageMode.jsx` agora é o centro da aplicação. Ele utiliza um único container de colunas CSS (`column-count`) tanto para exibição quanto para edição.
+- **Modo Performance**: Renderização via `formatLyrics()` (processa acordes `[C]`).
+- **Modo Edição**: Usa `contentEditable` no mesmo container CSS. Isso garante que a quebra de página que o usuário vê enquanto digita é **exatamente** a que ele verá no show.
+
+### 2. Fórmula de Paginação Horizontal
+Para garantir que o scroll caia sempre no início da coluna, ignorando paddings laterais, deve-se usar:
+```javascript
+const padSum = paddingLeft + paddingRight;
+const step = clientWidth - padSum + columnGap;
+const totalWidth = scrollWidth - padSum + columnGap;
+const totalPages = Math.max(1, Math.round(totalWidth / step));
+```
+*Nunca use `clientWidth + gap` puro se houver padding no container.*
+
+### 3. Sincronia de Layout e Proteções
+Medições de `scrollWidth` ou `clientWidth` após mudanças de estado (fonte, colunas, texto) devem ser feitas dentro de um **duplo `requestAnimationFrame`**. Além disso, aplique as seguintes proteções para evitar "Páginas Fantasmas":
+
+- **Height Guard**: Sempre verifique se o container tem uma altura mínima antes de medir. Durante transições de modo (viewer <-> editor), a altura pode ser zero momentaneamente, causando cálculos absurdos de colunas.
+```javascript
+if (el.clientHeight < 100) return; // Aborta cálculo instável
+```
+- **React Keys**: Use chaves únicas (`key="editor"`, `key="viewer"`) no elemento `main`. Isso força o React a recriar o nó do DOM, garantindo que o `scrollWidth` anterior não interfira na medição do novo conteúdo.
+- **Fixed Pixels vs REM**: Para sistemas de paginação por coluna, **prefira pixels fixos (ex: 64px)** para gaps e paddings laterais. O uso de `rem` pode gerar frações de pixels (64.33px) dependendo do zoom, causando "frestas" laterais no scroll.
+- **Métricas de Fonte (Acordes)**: Para que o Editor e o Viewer tenham o mesmo número de páginas, os acordes (`.chord`) **devem herdar** `font-family` e `font-weight`. Se o acorde for mais largo ou alto que o texto comum, o layout de colunas irá divergir.
+
+### 4. Orquestração de Abertura
+O Palco pode ser aberto de duas formas:
+1. **Pelo Repertório**: `activeRepertoire` preenchido.
+2. **Cifra Isolada**: Botão "Ver no Palco" no Editor Global. O `StageMode` utiliza o `activeSongId` como fallback caso não haja repertório, entrando no modo "Ensaio Avulso".
+
+## 💾 Persistência e Estado
+- **Auto-Save**: O `StageMode` dispara `updateSong` no evento `onInput` do editor.
+- **Limpeza de Estrofes**: Use `.filter(s => s.trim())` ao processar a letra para evitar que espaços em branco no final da música gerem páginas vazias.
+- **Natural Flow**: Evite `break-inside: avoid-column` se precisar de paridade 1:1 com o editor de texto, pois o editor quebra versos livremente no fim da coluna.
+
 ### Editor de Música (SongEditor)
 - Possui salvamento em tempo real (Auto-Save integrado via Context).
 - **Combobox Nativo**: Para filtros e seleção rápida com recurso de busca em tempo real (autocomplete), os campos "Artista", "Tom" e "Estilo" utilizam o elemento nativo HTML5 `<datalist>` conectado a um `<input>`, eliminando complexidades de dropdowns customizados e garantindo compatibilidade cross-browser.
