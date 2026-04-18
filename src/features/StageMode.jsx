@@ -72,22 +72,17 @@ const StageMode = ({ onClose }) => {
     // Formatação de cifras para exibição
     const formatLyrics = (text) => {
         if (!text) return null;
+        // Dividimos apenas por linha para manter o ritmo vertical idêntico ao editor
+        const lines = text.split('\n');
         
-        // Divide as letras em Estrofes baseadas em linhas em branco e limpa vazios
-        const stanzas = text.split(/\n\s*\n/).filter(s => s.trim());
-        
-        return stanzas.map((stanza, stanzaIndex) => {
-            const lines = stanza.split('\n');
-            
+        return lines.map((line, index) => {
+            const formattedLine = line.replace(/\[([^\]]+)\]/g, '<span class="chord">[$1]</span>');
             return (
-                <div key={stanzaIndex} className="lyric-stanza mb-[1.5em] break-inside-avoid relative">
-                    {lines.map((line, lineIndex) => {
-                        const formattedLine = line.replace(/\[([^\]]+)\]/g, '<span class="chord font-bold text-indigo-400">[$1]</span>');
-                        return (
-                            <div key={lineIndex} className="lyric-line break-words whitespace-pre-wrap" dangerouslySetInnerHTML={{ __html: formattedLine || '&nbsp;' }} />
-                        );
-                    })}
-                </div>
+                <div 
+                    key={index} 
+                    className="lyric-line" 
+                    dangerouslySetInnerHTML={{ __html: formattedLine || '&nbsp;' }} 
+                />
             );
         });
     };
@@ -333,7 +328,7 @@ const StageMode = ({ onClose }) => {
                     onInput={(e) => {
                         updateSong(currentSong.id, { lyrics: e.currentTarget.innerText });
                     }}
-                    className="flex-1 overflow-x-hidden overflow-y-auto py-8 outline-none caret-amber-400 selection:bg-amber-500/30"
+                    className="flex-1 overflow-x-hidden overflow-y-hidden py-8 outline-none caret-amber-400 selection:bg-amber-500/30"
                     style={{
                         paddingLeft: '64px',
                         paddingRight: '64px',
@@ -344,7 +339,7 @@ const StageMode = ({ onClose }) => {
                         columnFill: 'auto',
                         whiteSpace: 'pre-wrap',
                         wordBreak: 'break-word',
-                        color: '#cbd5e1',
+                        color: '#ffffff',
                         lineHeight: '1.6',
                         fontFamily: 'inherit',
                         cursor: 'text',
@@ -363,7 +358,10 @@ const StageMode = ({ onClose }) => {
                         columnCount: activeCols,
                         columnGap: '64px',
                         columnWidth: activeCols === 1 ? '100%' : 'auto',
-                        columnFill: 'auto'
+                        columnFill: 'auto',
+                        whiteSpace: 'pre-wrap',
+                        wordBreak: 'break-word',
+                        color: '#ffffff'
                     }}
                 >
                     {formatLyrics(currentSong.lyrics)}
@@ -454,7 +452,9 @@ const StageMode = ({ onClose }) => {
                 .lyric-line {
                     display: block;
                     line-height: 1.6;
-                    margin-bottom: 0;
+                    min-height: 1.6em; /* Garante altura para linhas vazias */
+                    white-space: pre-wrap;
+                    word-break: break-word;
                 }
                 .chord {
                     color: #4ade80;

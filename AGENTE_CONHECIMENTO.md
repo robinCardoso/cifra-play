@@ -35,8 +35,8 @@ O **Cifra & Play** agora é uma aplicação **PWA (Progressive Web App)** 100% o
 
 ### 1. Motor Unificado (Live Editor)
 O `StageMode.jsx` agora é o centro da aplicação. Ele utiliza um único container de colunas CSS (`column-count`) tanto para exibição quanto para edição.
-- **Modo Performance**: Renderização via `formatLyrics()` (processa acordes `[C]`).
-- **Modo Edição**: Usa `contentEditable` no mesmo container CSS. Isso garante que a quebra de página que o usuário vê enquanto digita é **exatamente** a que ele verá no show.
+- **Modo Performance**: Renderização linear via `formatLyrics()`. **Regra de Ouro**: O texto deve ser renderizado linha por linha (split por `\n`) em vez de estrofe por estrofe. Isso garante que o ritmo vertical seja ditado apenas pelos caracteres de quebra de linha, eliminando discrepâncias causadas por margens de bloco de CSS.
+- **Modo Edição**: Usa `contentEditable` no mesmo container CSS com `whiteSpace: 'pre-wrap'`.
 
 ### 2. Fórmula de Paginação Horizontal
 Para garantir que o scroll caia sempre no início da coluna, ignorando paddings laterais, deve-se usar:
@@ -58,6 +58,7 @@ if (el.clientHeight < 100) return; // Aborta cálculo instável
 - **React Keys**: Use chaves únicas (`key="editor"`, `key="viewer"`) no elemento `main`. Isso força o React a recriar o nó do DOM, garantindo que o `scrollWidth` anterior não interfira na medição do novo conteúdo.
 - **Fixed Pixels vs REM**: Para sistemas de paginação por coluna, **prefira pixels fixos (ex: 64px)** para gaps e paddings laterais. O uso de `rem` pode gerar frações de pixels (64.33px) dependendo do zoom, causando "frestas" laterais no scroll.
 - **Métricas de Fonte (Acordes)**: Para que o Editor e o Viewer tenham o mesmo número de páginas, os acordes (`.chord`) **devem herdar** `font-family` e `font-weight`. Se o acorde for mais largo ou alto que o texto comum, o layout de colunas irá divergir.
+- **Paridade de Linhas Vazias**: No modo Viewer, linhas vazias devem ser protegidas com `min-height: 1.6em` (ou o valor do `line-height`) e conter um `&nbsp;` se necessário, para garantir que ocupem o mesmo espaço vertical que uma linha vazia no Editor.
 
 ### 4. Orquestração de Abertura
 O Palco pode ser aberto de duas formas:
@@ -97,6 +98,25 @@ O Palco pode ser aberto de duas formas:
     - `ListManagerModal.jsx` (Modais utilitários): z-[200].
 - **Cortes de Modais (`overflow` excessivo)**: Ao flexbox alinhar modais com `items-center justify-center`, atente-se ao uso de limite de altura em telas widescreen ou desktop (`max-h-[85vh]`). Utilizar apenas classe de auto ou vh completa, dependendo do conteúdo, oculta permanentemente o cabeçalho fora dos limites de rolagem superior do flex.
 
-### PWA Integrado (Offline)
-- Prompt nativo para instalação em Mobile e Desktop através de componente contextual flutuante.
-- Cache de Assets em nível de Service Worker para funcionamento 100% offline.
+## 📶 PWA & Deploy (Modernização)
+
+### 1. Progressive Web App (Offline First)
+O sistema utiliza o `vite-plugin-pwa` para transformar o site em um aplicativo instalável.
+- **Estratégia**: `autoUpdate`. O app detecta novas versões e se atualiza sozinho as emendas ao código.
+- **Cache**: Todos os arquivos estáticos (JS, CSS, Fontes, Ícones) são cacheados pelo Service Worker, permitindo que o músico abra o app e acesse as cifras mesmo em locais **sem sinal de internet**.
+
+### 2. Modal Premium de Instalação (`InstallPWA.jsx`)
+Em vez de depender do aviso padrão do navegador, usamos um modal customizado:
+- **Evento**: Captura o `beforeinstallprompt`.
+- **UX**: Explica os benefícios (Offline, Acesso Rápido) e só aparece para usuários que ainda não instalaram o app.
+- **Z-Index**: `z-[400]` (para sobrepor todos os outros modais e o StageMode).
+
+### 3. Automação de Deploy (GitHub Actions)
+O deploy é automatizado via `.github/workflows/deploy.yml`:
+- **Branch**: `main` ou `master`.
+- **Processo**: `Install (npm ci)` -> `Build (vite)` -> `Deploy (GitHub Pages)`.
+- **Vite Config**: O `base` no `vite.config.js` está fixado como `/cifra-play/`.
+
+## 📌 Histórico de Versões
+- **v1.0.0**: Lançamento da modernização (StageMode unificado, Live Editor, Paginação Matemática).
+- **v1.0.1**: Implementação do PWA v2, Modal Premium de Instalação e Botão de Voltar no Editor.
