@@ -17,10 +17,18 @@ const StageMode = ({ onClose }) => {
         activeRepertoire, 
         songLibrary, 
         fontSize, setFontSize,
-        columnCount, setColumnCount
+        columnCount, setColumnCount,
+        activeSongId
     } = useLibrary();
 
-    const [currentIndex, setCurrentIndex] = useState(0);
+    const [currentIndex, setCurrentIndex] = useState(() => {
+        if (activeSongId && activeRepertoire) {
+            const index = activeRepertoire.songIds.indexOf(activeSongId);
+            return index !== -1 ? index : 0;
+        }
+        return 0;
+    });
+    
     const [currentPage, setCurrentPage] = useState(0);
     const [totalPages, setTotalPages] = useState(1);
     
@@ -47,9 +55,23 @@ const StageMode = ({ onClose }) => {
     // Formatação de cifras para exibição
     const formatLyrics = (text) => {
         if (!text) return null;
-        return text.split('\n').map((line, i) => {
-            const formattedLine = line.replace(/\[([^\]]+)\]/g, '<span class="chord">[$1]</span>');
-            return <div key={i} className="lyric-line" dangerouslySetInnerHTML={{ __html: formattedLine || '&nbsp;' }} />;
+        
+        // Divide as letras em Estrofes baseadas em linhas em branco
+        const stanzas = text.split(/\n\s*\n/);
+        
+        return stanzas.map((stanza, stanzaIndex) => {
+            const lines = stanza.split('\n');
+            
+            return (
+                <div key={stanzaIndex} className="lyric-stanza mb-[1.5em] break-inside-avoid relative">
+                    {lines.map((line, lineIndex) => {
+                        const formattedLine = line.replace(/\[([^\]]+)\]/g, '<span class="chord font-bold text-indigo-400">[$1]</span>');
+                        return (
+                            <div key={lineIndex} className="lyric-line break-words whitespace-pre-wrap" dangerouslySetInnerHTML={{ __html: formattedLine || '&nbsp;' }} />
+                        );
+                    })}
+                </div>
+            );
         });
     };
 
@@ -98,7 +120,7 @@ const StageMode = ({ onClose }) => {
         }
 
         if (currentPage < totalPages - 1) {
-            setCurrentPage(p => p + 1);
+            scrollToPage(currentPage + 1);
         } else if (currentIndex < (activeRepertoire?.songIds.length || 1) - 1) {
             setCurrentIndex(i => i + 1);
             setCurrentPage(0);
@@ -114,7 +136,7 @@ const StageMode = ({ onClose }) => {
         }
 
         if (currentPage > 0) {
-            setCurrentPage(p => p - 1);
+            scrollToPage(currentPage - 1);
         } else if (currentIndex > 0) {
             setCurrentIndex(i => i - 1);
             window._stageComingBack = true;
@@ -163,7 +185,7 @@ const StageMode = ({ onClose }) => {
     ).slice(0, 8); // Limite de visualização rápida
 
     return (
-        <div className="fixed inset-0 z-[100] bg-slate-950 text-white flex flex-col font-sans animate-in fade-in duration-300">
+        <div className="fixed inset-0 z-[220] bg-slate-950 text-white flex flex-col font-sans animate-in fade-in duration-300">
             
             {/* Header de Controle do Palco */}
             <header className="flex-shrink-0 bg-slate-900/80 backdrop-blur-md p-4 flex items-center justify-between border-b border-white/5 relative z-10">
@@ -248,7 +270,7 @@ const StageMode = ({ onClose }) => {
             {/* Visualizador de Letras */}
             <main 
                 ref={lyricsViewRef}
-                className="flex-1 overflow-x-hidden overflow-y-hidden pt-8 pb-8 md:pt-16 md:pb-16"
+                className="flex-1 overflow-x-hidden overflow-y-hidden py-8 px-4 md:py-16 md:px-16"
                 style={{ 
                     fontSize: `${fontSize}rem`,
                     columnCount: columnCount,
@@ -257,7 +279,7 @@ const StageMode = ({ onClose }) => {
                     columnFill: 'auto'
                 }}
             >
-                <div className="max-w-none px-8 md:px-16 min-h-full pb-32">
+                <div className="w-full">
                     {formatLyrics(currentSong.lyrics)}
                 </div>
             </main>

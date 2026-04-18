@@ -18,10 +18,14 @@ const SongEditor = () => {
     } = useLibrary();
 
     // Cálculo dinâmico das guias baseado no tamanho da letra e colunas do palco
-    // Assumimos um palco padrão de 45rem de altura útil
-    const linesPerColumn = Math.max(8, Math.floor(45 / (fontSize || 1.5)));
-    const totalLinesPerPage = linesPerColumn * (columnCount || 1); // Multiplica pela qtd de colunas
-    const editorLineHeight = 1.625; // leading-relaxed
+    // Assumimos que o StageMode renderiza na tela uma área útil média de 35~38rem.
+    // Multiplicamos o fontSize por 1.5 para considerar a altura real da linha (line-height)
+    const linesPerColumn = Math.max(10, Math.floor(38 / (fontSize * 1.5)));
+    const totalLinesPerPage = linesPerColumn * (columnCount || 1); 
+    
+    // Altura ABSOLUTA da linha no editor para sincronizar o background perfeitamente
+    const editorLineHeight = 1.75; // Equivalente a leading-[1.75rem]
+    const columnBreakInterval = linesPerColumn * editorLineHeight;
     const pageBreakInterval = totalLinesPerPage * editorLineHeight;
 
     const textareaRef = useRef(null);
@@ -101,14 +105,16 @@ const SongEditor = () => {
                                 <PlusCircle size={14} weight="bold" />
                             </button>
                         </div>
-                        <select 
-                            value={activeSong.artist}
+                        <input 
+                            list="artists-list"
+                            value={activeSong.artist || ''}
                             onChange={(e) => handleFieldChange('artist', e.target.value)}
-                            className="bg-slate-100 dark:bg-slate-900 border-none rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-medium"
-                        >
-                            <option value="">Selecione...</option>
-                            {artists.map(a => <option key={a} value={a}>{a}</option>)}
-                        </select>
+                            placeholder="Selecione..."
+                            className="bg-slate-100 dark:bg-slate-900 border-none rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-medium w-full text-slate-800 dark:text-slate-200"
+                        />
+                        <datalist id="artists-list">
+                            {artists.map(a => <option key={a} value={a} />)}
+                        </datalist>
                     </div>
 
                     {/* Tom */}
@@ -119,14 +125,16 @@ const SongEditor = () => {
                                 <PlusCircle size={14} weight="bold" />
                             </button>
                         </div>
-                        <select 
-                            value={activeSong.key}
+                        <input 
+                            list="keys-list"
+                            value={activeSong.key || ''}
                             onChange={(e) => handleFieldChange('key', e.target.value)}
-                            className="bg-slate-100 dark:bg-slate-900 border-none rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-bold"
-                        >
-                            <option value="">--</option>
-                            {keys.map(k => <option key={k} value={k}>{k}</option>)}
-                        </select>
+                            placeholder="--"
+                            className="bg-slate-100 dark:bg-slate-900 border-none rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-bold w-full text-slate-800 dark:text-slate-200 uppercase"
+                        />
+                        <datalist id="keys-list">
+                            {keys.map(k => <option key={k} value={k} />)}
+                        </datalist>
                     </div>
 
                     {/* Estilo */}
@@ -137,25 +145,38 @@ const SongEditor = () => {
                                 <PlusCircle size={14} weight="bold" />
                             </button>
                         </div>
-                        <select 
-                            value={activeSong.style}
+                        <input 
+                            list="styles-list"
+                            value={activeSong.style || ''}
                             onChange={(e) => handleFieldChange('style', e.target.value)}
-                            className="bg-slate-100 dark:bg-slate-900 border-none rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-medium"
-                        >
-                            <option value="">Sem Estilo</option>
-                            {styles.map(s => <option key={s} value={s}>{s}</option>)}
-                        </select>
+                            placeholder="Sem Estilo"
+                            className="bg-slate-100 dark:bg-slate-900 border-none rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-medium w-full text-slate-800 dark:text-slate-200"
+                        />
+                        <datalist id="styles-list">
+                            {styles.map(s => <option key={s} value={s} />)}
+                        </datalist>
                     </div>
 
                     {/* Áudio / Player */}
                     <div className="flex flex-col gap-1.5 focus-within:scale-[1.02] transition-transform">
-                        <label className="text-[10px] uppercase font-bold tracking-widest text-slate-400 dark:text-slate-500 ml-1">Áudio de Apoio</label>
-                        <div className="flex-1 bg-slate-100 dark:bg-slate-900 rounded-xl flex items-center justify-between px-3 min-h-[40px]">
+                        <label className="text-[10px] uppercase font-bold tracking-widest text-slate-400 dark:text-slate-500 ml-1 flex justify-between">
+                            <span>Áudio de Apoio</span>
+                            {activeSong.audioName && <span className="text-indigo-400 font-normal truncate max-w-[120px]" title={activeSong.audioName}>{activeSong.audioName}</span>}
+                        </label>
+                        <div className="flex-1 bg-slate-100 dark:bg-slate-900 rounded-xl flex items-center justify-between px-2 min-h-[44px]">
                             {activeSong.audioUrl ? (
-                                <div className="flex items-center gap-2 w-full">
-                                    <audio src={activeSong.audioUrl} controls className="h-6 w-full max-w-[150px] outline-none" />
-                                    <button onClick={removeAudio} className="text-red-400 hover:text-red-500 p-1 rounded-md" title="Remover Áudio">
-                                        <Trash size={16} weight="bold" />
+                                <div className="flex items-center gap-1 w-full p-1">
+                                    <audio 
+                                        src={activeSong.audioUrl} 
+                                        controls 
+                                        className="h-9 w-full outline-none" 
+                                    />
+                                    <button 
+                                        onClick={removeAudio} 
+                                        className="text-red-400 hover:text-red-500 p-2 rounded-md transition-colors" 
+                                        title="Remover Áudio"
+                                    >
+                                        <Trash size={18} weight="bold" />
                                     </button>
                                 </div>
                             ) : (
@@ -197,13 +218,14 @@ const SongEditor = () => {
                         value={activeSong.lyrics}
                         onChange={(e) => handleFieldChange('lyrics', e.target.value)}
                         placeholder="Cole aqui sua letra com cifras..."
-                        className="h-full w-full bg-transparent p-8 outline-none resize-none font-mono text-base md:text-lg leading-relaxed text-slate-700 dark:text-slate-300 placeholder-slate-300 dark:placeholder-slate-800 relative z-30"
+                        className="h-full w-full bg-transparent p-8 outline-none resize-none font-mono text-base md:text-lg leading-[1.75rem] text-slate-700 dark:text-slate-300 placeholder-slate-300 dark:placeholder-slate-800 relative z-30"
                         style={{ 
                             backgroundImage: `
-                                linear-gradient(to bottom, transparent calc(${pageBreakInterval}rem - 0.05rem), rgba(245, 158, 11, 0.5) calc(${pageBreakInterval}rem - 0.05rem), rgba(245, 158, 11, 0.5) calc(${pageBreakInterval}rem + 0.05rem), transparent calc(${pageBreakInterval}rem + 0.05rem)),
+                                linear-gradient(to bottom, transparent calc(${pageBreakInterval}rem - 0.1rem), rgba(245, 158, 11, 0.8) calc(${pageBreakInterval}rem - 0.1rem), rgba(245, 158, 11, 0.8) calc(${pageBreakInterval}rem + 0.1rem), transparent calc(${pageBreakInterval}rem + 0.1rem)),
+                                linear-gradient(to bottom, transparent calc(${columnBreakInterval}rem - 0.05rem), rgba(236, 72, 153, 0.5) calc(${columnBreakInterval}rem - 0.05rem), rgba(236, 72, 153, 0.5) calc(${columnBreakInterval}rem + 0.05rem), transparent calc(${columnBreakInterval}rem + 0.05rem)),
                                 linear-gradient(to bottom, rgba(99, 102, 241, 0.05) 1px, transparent 1px)
                             `,
-                            backgroundSize: `100% ${pageBreakInterval}rem, 100% ${editorLineHeight}rem`,
+                            backgroundSize: `100% ${pageBreakInterval}rem, 100% ${columnBreakInterval}rem, 100% ${editorLineHeight}rem`,
                             backgroundAttachment: 'local',
                             backgroundRepeat: 'repeat-y'
                         }}

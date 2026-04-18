@@ -5,15 +5,13 @@ import { X, CaretRight, CaretLeft, BookOpen, ArrowLeft } from '@phosphor-icons/r
 const Teleprompter = () => {
     const {
         isTeleprompterOpen, setIsTeleprompterOpen,
-        activeRepertoire, songLibrary
+        activeRepertoire, songLibrary,
+        setActiveSongId, setIsStageMode
     } = useLibrary();
 
     const [tpGroups, setTpGroups] = useState([]);
     const [currentPage, setCurrentPage] = useState(0);
     const [tpColumns, setTpColumns] = useState(1);
-    
-    // Para o modal das letras (Overlay)
-    const [selectedSong, setSelectedSong] = useState(null);
 
     useEffect(() => {
         if (!activeRepertoire) return;
@@ -48,16 +46,14 @@ const Teleprompter = () => {
     useEffect(() => {
         const handleKeys = (e) => {
             if (e.key === 'Escape') {
-                if (selectedSong) setSelectedSong(null);
-                else setIsTeleprompterOpen(false);
+                setIsTeleprompterOpen(false);
             }
-            if (selectedSong) return; // Se o modal está aberto, não navega páginas.
             if (e.key === 'ArrowRight' || e.key === ' ') handleNext();
             if (e.key === 'ArrowLeft') handlePrev();
         };
         window.addEventListener('keydown', handleKeys);
         return () => window.removeEventListener('keydown', handleKeys);
-    }, [currentPage, tpGroups, selectedSong]);
+    }, [currentPage, tpGroups]);
 
     if (!isTeleprompterOpen || !activeRepertoire) return null;
 
@@ -79,32 +75,7 @@ const Teleprompter = () => {
 
     return (
         <div className="fixed inset-0 z-[150] bg-[#0a0a0f] text-white flex flex-col font-sans animate-in fade-in duration-300 overflow-hidden">
-            
-            {/* OVERLAY DE LETRA DA MÚSICA */}
-            {selectedSong && (
-                <div className="absolute inset-0 z-[160] flex flex-col bg-[#0a0a0f] animate-in slide-in-from-bottom-5 duration-200">
-                    <header className="flex items-center gap-3 px-5 py-3 flex-shrink-0 bg-black/70 border-b border-white/10">
-                        <button 
-                            onClick={() => setSelectedSong(null)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold text-sm transition-all bg-white/10 hover:bg-white/20 text-slate-200"
-                        >
-                            <ArrowLeft weight="bold" /> Voltar
-                        </button>
-                        <div className="flex-1 min-w-0">
-                            <p className="font-bold text-white truncate text-base leading-none">{selectedSong.title}</p>
-                            <p className="text-xs text-slate-400 mt-0.5 truncate">
-                                {[selectedSong.artist, selectedSong.key ? `Tom: ${selectedSong.key}` : '', selectedSong.style].filter(Boolean).join(' • ')}
-                            </p>
-                        </div>
-                    </header>
-                    <div 
-                        className="flex-1 min-h-0 overflow-y-auto px-6 py-5 text-white font-mono"
-                        style={{ fontSize: 'clamp(1rem, 2.5vw, 1.2rem)', lineHeight: 1.9, whiteSpace: 'pre-wrap' }}
-                    >
-                        {selectedSong.lyrics || '(sem letra cadastrada para esta música)'}
-                    </div>
-                </div>
-            )}
+
 
             {/* HEADER COM CONTROLES */}
             <header className="flex items-center justify-between px-5 py-2 flex-shrink-0 bg-black/60 border-b border-white/5">
@@ -156,7 +127,10 @@ const Teleprompter = () => {
                         {group.songs.map((song, i) => (
                             <div 
                                 key={song.id + '-' + i} 
-                                onClick={() => setSelectedSong(song)}
+                                onClick={() => {
+                                    setActiveSongId(song.id);
+                                    setIsStageMode(true);
+                                }}
                                 className="group cursor-pointer rounded-lg px-2 py-1 transition-colors hover:bg-white/5"
                                 style={{ marginBottom: sz.gap }}
                             >

@@ -34,31 +34,21 @@ const Sidebar = () => {
       
       {/* Header da Sidebar */}
       <div className="flex items-center justify-between mb-2">
-        <h1 className="text-2xl font-black text-indigo-600 dark:text-indigo-400 tracking-tighter">Cifra&Play</h1>
-        <div className="flex gap-2">
-          <button 
-            onClick={() => addRepertoire('Novo Repertório')}
-            className="p-2 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500 hover:text-white transition-all"
-            title="Novo Repertório"
-          >
-            <Playlist size={20} weight="bold" />
-          </button>
-          <button 
-            onClick={() => addSong()}
-            className="p-2 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 shadow-lg shadow-indigo-500/20 transition-all active:scale-95"
-            title="Nova Música"
-          >
-            <MusicNotesPlus size={20} weight="bold" />
-          </button>
-        </div>
+        <h1 className="text-3xl font-black text-indigo-600 dark:text-indigo-400 tracking-tighter">Cifra&Play</h1>
       </div>
 
       {/* Repertórios */}
       <section className="flex flex-col gap-2">
-        <h2 className="text-[10px] uppercase font-bold tracking-widest text-slate-400 dark:text-slate-500 flex justify-between items-center group">
-          Meus Repertórios
-          <PlusCircle size={14} className="opacity-0 group-hover:opacity-100 cursor-pointer" onClick={() => addRepertoire('Novo Repertório')} />
-        </h2>
+        <div className="flex justify-between items-center">
+            <h2 className="text-[10px] uppercase font-bold tracking-widest text-slate-400 dark:text-slate-500">Meus Repertórios</h2>
+            <button 
+                onClick={() => addRepertoire('Novo Repertório')}
+                className="text-[9px] font-bold tracking-widest uppercase bg-emerald-500/10 hover:bg-emerald-600 text-emerald-500 hover:text-white px-2 py-1 rounded-md transition-all flex items-center gap-1 active:scale-95 border border-emerald-500/20"
+                title="Criar Novo Repertório"
+            >
+                <Playlist size={12} weight="bold" /> Adicionar
+            </button>
+        </div>
         <div className="flex flex-col gap-1 max-h-48 overflow-y-auto pr-1">
           {repertoires.map(rep => (
             <div 
@@ -109,7 +99,16 @@ const Sidebar = () => {
 
       {/* Biblioteca de Músicas */}
       <section className="flex-1 flex flex-col gap-2 overflow-hidden">
-        <h2 className="text-[10px] uppercase font-bold tracking-widest text-slate-400 dark:text-slate-500">Minha Biblioteca</h2>
+        <div className="flex justify-between items-center">
+            <h2 className="text-[10px] uppercase font-bold tracking-widest text-slate-400 dark:text-slate-500">Minha Biblioteca</h2>
+            <button 
+                onClick={() => addSong()}
+                className="text-[9px] font-bold tracking-widest uppercase bg-indigo-500/10 hover:bg-indigo-600 text-indigo-500 hover:text-white px-2 py-1 rounded-md transition-all flex items-center gap-1 active:scale-95 border border-indigo-500/20"
+                title="Criar Nova Música"
+            >
+                <MusicNotesPlus size={12} weight="bold" /> Adicionar
+            </button>
+        </div>
         <div className="flex-1 overflow-y-auto pr-1 flex flex-col gap-1">
           {filteredSongs.length > 0 ? (
             filteredSongs.map(song => (
