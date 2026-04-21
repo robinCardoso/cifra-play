@@ -31,44 +31,91 @@ O **Cifra & Play** agora é uma aplicação **PWA (Progressive Web App)** 100% o
 
 ## 4. Funcionalidades Principais Implementadas
 
-## 🎤 StageMode & Renderização (Modernização)
+## 🎤 StageMode & Renderização (Estado Atual Consolidado)
 
-### 1. Motor Unificado (Live Editor)
-O `StageMode.jsx` agora é o centro da aplicação. Ele utiliza um único container de colunas CSS (`column-count`) tanto para exibição quanto para edição.
-- **Modo Performance**: Renderização linear via `formatLyrics()`. **Regra de Ouro**: O texto deve ser renderizado linha por linha (split por `\n`) em vez de estrofe por estrofe. Isso garante que o ritmo vertical seja ditado apenas pelos caracteres de quebra de linha, eliminando discrepâncias causadas por margens de bloco de CSS.
-- **Modo Edição**: Usa `contentEditable` no mesmo container CSS com `whiteSpace: 'pre-wrap'`.
+### 1. Arquitetura do Palco
+O `StageMode.jsx` é o núcleo de execução de letra ao vivo.
+- **Viewport Fixa 16:9**: O palco renderiza em base virtual `1920x1080` e aplica `scale` automático para caber na janela. Isso mantém consistência de paginação dentro e fora de fullscreen.
+- **Overlay**: Palco em `z-[220]`, com header de controle, corpo paginado e rodapé de progresso.
+- **Abertura**:
+  1. Por repertório (`activeRepertoire`).
+  2. Por música isolada (`activeSongId`), no modo "Ensaio Avulso".
 
-### 2. Fórmula de Paginação Horizontal
-Para garantir que o scroll caia sempre no início da coluna, ignorando paddings laterais, deve-se usar:
-```javascript
-const padSum = paddingLeft + paddingRight;
-const step = clientWidth - padSum + columnGap;
-const totalWidth = scrollWidth - padSum + columnGap;
-const totalPages = Math.max(1, Math.round(totalWidth / step));
-```
-*Nunca use `clientWidth + gap` puro se houver padding no container.*
+### 2. Regras de Colunas (Prioridade Obrigatória)
+Prioridade de colunas usada no palco:
+1. **Override de sessão do StageMode** (botão de colunas no header do palco).
+2. **Preferência da música** (`song.columns`).
+3. **Configuração global** (`columnCount`).
 
-### 3. Sincronia de Layout e Proteções
-Medições de `scrollWidth` ou `clientWidth` após mudanças de estado (fonte, colunas, texto) devem ser feitas dentro de um **duplo `requestAnimationFrame`**. Além disso, aplique as seguintes proteções para evitar "Páginas Fantasmas":
+Regra: alteração no botão de colunas do palco deve impactar imediatamente a paginação da sessão atual, sem exigir sair/reabrir o modo palco.
 
-- **Height Guard**: Sempre verifique se o container tem uma altura mínima antes de medir. Durante transições de modo (viewer <-> editor), a altura pode ser zero momentaneamente, causando cálculos absurdos de colunas.
-```javascript
-if (el.clientHeight < 100) return; // Aborta cálculo instável
-```
-- **React Keys**: Use chaves únicas (`key="editor"`, `key="viewer"`) no elemento `main`. Isso força o React a recriar o nó do DOM, garantindo que o `scrollWidth` anterior não interfira na medição do novo conteúdo.
-- **Fixed Pixels vs REM**: Para sistemas de paginação por coluna, **prefira pixels fixos (ex: 64px)** para gaps e paddings laterais. O uso de `rem` pode gerar frações de pixels (64.33px) dependendo do zoom, causando "frestas" laterais no scroll.
-- **Métricas de Fonte (Acordes)**: Para que o Editor e o Viewer tenham o mesmo número de páginas, os acordes (`.chord`) **devem herdar** `font-family` e `font-weight`. Se o acorde for mais largo ou alto que o texto comum, o layout de colunas irá divergir.
-- **Paridade de Linhas Vazias**: No modo Viewer, linhas vazias devem ser protegidas com `min-height: 1.6em` (ou o valor do `line-height`) e conter um `&nbsp;` se necessário, para garantir que ocupem o mesmo espaço vertical que uma linha vazia no Editor.
+### 3. Paginação Horizontal (Regra Oficial)
+Paginação é controlada por `scrollLeft` horizontal no container de letra.
+- **Step oficial**: `step = contentWidth + columnGap`, onde `contentWidth = clientWidth - paddingLeft - paddingRight`.
+- **Limite**: `maxScrollLeft = scrollWidth - clientWidth`.
+- **Total de páginas**: `totalPages = Math.max(1, Math.ceil(maxScrollLeft / step) + 1)`.
+- **Snap obrigatório**: toda navegação deve usar `scrollLeft = clamp(page * step, 0, maxScrollLeft)`.
 
-### 4. Orquestração de Abertura
-O Palco pode ser aberto de duas formas:
-1. **Pelo Repertório**: `activeRepertoire` preenchido.
-2. **Cifra Isolada**: Botão "Ver no Palco" no Editor Global. O `StageMode` utiliza o `activeSongId` como fallback caso não haja repertório, entrando no modo "Ensaio Avulso".
+Isso evita:
+- repetição da coluna direita na página seguinte,
+- início de página "cortado" (estado entre grades),
+- colunas fantasmas fora do enquadramento.
+
+#### Regra Anti-Regressão (CRÍTICA)
+**Nunca** usar `step = clientWidth` puro em layout multi-column com padding/gap.
+
+Motivo:
+- gera deslocamento diferente entre páginas,
+- cria diferença de margem esquerda entre `Pág. 1` e `Pág. 2`,
+- pode puxar texto residual no canto direito (vazamento da coluna seguinte).
+
+Checklist obrigatório ao mexer em paginação:
+1. Validar `Pág. 1` e `Pág. 2` com a mesma música longa em `2 colunas`.
+2. Confirmar que a margem esquerda visual é idêntica nas duas páginas.
+3. Confirmar ausência de texto "cortado/vazando" no canto direito.
+4. Com debug ativo (`Ctrl+Shift+D`), verificar se o avanço de página segue o `step` calculado.
+5. Validar também o `Modo Edição` (2 colunas) para garantir ausência de coluna residual no canto esquerdo.
+
+### 4. Reflow e Estabilidade Durante Edição
+Durante edição (`contentEditable`), o layout muda em tempo real e precisa de recálculo agressivo.
+- **Debounce de salvamento**: `250ms` para `updateSong`.
+- **Flush ao sair da edição**: ao sair do modo edição, persistir imediatamente o que estiver pendente.
+- **Re-snap pós-input**: após `onInput`, executar realinhamento via `requestAnimationFrame`.
+- **Guard de medição**: abortar cálculo quando `clientHeight < 100` para evitar medições instáveis em transição.
+- **Duplo RAF**: manter medição após reflow com dupla chamada de `requestAnimationFrame` para evitar corrida de layout.
+- **Compensação de última página**: usar `pageVisualOffset` quando o alvo virtual da página exceder o `maxScrollLeft`.
+- **Regra estrutural do editor**: aplicar compensação na camada interna `contentEditable` (wrapper interno), nunca diretamente no container de scroll `main`.
+
+### 5. Regras de Teclado e UX
+- Em edição, **não** navegar página com setas/espaço.
+- Em edição, `Escape` sai do modo edição (não fecha o palco direto).
+- Busca (`Ctrl+F`) abre pesquisa rápida de músicas.
+- Debug é oculto e alternado apenas por atalho `Ctrl+Shift+D`.
+
+### 6. Renderização de Letra e Segurança
+- Sem `dangerouslySetInnerHTML` para letra principal.
+- Acordes (`[Am]`, `[G]`) são renderizados com `span.chord` de forma segura.
+- Linhas vazias devem preservar altura visual (`min-height`) e `&nbsp;` para manter paridade com edição.
+
+### 7. Controle de Estrofes
+- Existe opção no header para evitar quebra ruim no fim da página: `Estrofes`.
+- Quando ativa, aplica:
+  - `break-inside: avoid-column`
+  - `-webkit-column-break-inside: avoid`
+  - `page-break-inside: avoid`
+
+Regra: esta proteção melhora legibilidade de bloco, mas pode alterar a distribuição exata de linhas entre páginas.
+
+### 8. Header e Legibilidade
+- Header ampliado para uso em palco (tipografia e botões maiores).
+- Selo informativo de layout fixo (`Layout 16:9 fixo`).
+- Rodapé reduz dinamicamente quando há pouco conteúdo (menos espaço morto visual).
 
 ## 💾 Persistência e Estado
-- **Auto-Save**: O `StageMode` dispara `updateSong` no evento `onInput` do editor.
-- **Limpeza de Estrofes**: Use `.filter(s => s.trim())` ao processar a letra para evitar que espaços em branco no final da música gerem páginas vazias.
-- **Natural Flow**: Evite `break-inside: avoid-column` se precisar de paridade 1:1 com o editor de texto, pois o editor quebra versos livremente no fim da coluna.
+- **Auto-Save com Debounce**: O `StageMode` usa `onInput` com debounce para reduzir custo de render e escrita em `localStorage`.
+- **Persistência central**: `usePersistence` grava `songLibrary` e demais listas por `useEffect`.
+- **Cuidado de performance**: evitar gravação síncrona em toda tecla sem debounce em letras longas.
+- **Observação de estrofes**: proteção de estrofes (`break-inside`) é opção de leitura e não deve ser tratada como verdade absoluta de layout no editor global.
 
 ### Editor de Música (SongEditor)
 - Possui salvamento em tempo real (Auto-Save integrado via Context).

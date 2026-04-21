@@ -40,6 +40,11 @@ const StageMode = ({ onClose }) => {
     const [stageScale, setStageScale] = useState(1);
     const [centerOffsetTop, setCenterOffsetTop] = useState(0);
     const [stageColumnOverride, setStageColumnOverride] = useState(null);
+    const [isDebugMode, setIsDebugMode] = useState(false);
+    const [debugMetrics, setDebugMetrics] = useState({ scrollLeft: 0, step: 0, maxScrollLeft: 0 });
+    const [editLayoutTick, setEditLayoutTick] = useState(0);
+    const [keepStanzaTogether, setKeepStanzaTogether] = useState(true);
+    const [pageVisualOffset, setPageVisualOffset] = useState(0);
     
     // Estados da Busca (On-the-fly)
     const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -50,6 +55,36 @@ const StageMode = ({ onClose }) => {
     const pendingLyricsRef = useRef('');
 
     const lyricsViewRef = useRef(null);
+    const editorContentRef = useRef(null);
+
+    const getPaginationMetrics = (el) => {
+        const metricsSource = isEditing && editorContentRef.current ? editorContentRef.current : el;
+        const style = window.getComputedStyle(metricsSource);
+        const padL = parseFloat(style.paddingLeft) || 0;
+        const padR = parseFloat(style.paddingRight) || 0;
+        const gap = parseFloat(style.columnGap) || 64;
+        const contentWidth = Math.max(1, el.clientWidth - padL - padR);
+        // Em CSS multi-column, a próxima "página" começa após 1 bloco visível de colunas:
+        // largura útil + gap. Usar clientWidth puro causa drift entre páginas.
+        const step = Math.max(1, Math.round(contentWidth + gap));
+        const maxScrollLeft = Math.max(0, metricsSource.scrollWidth - el.clientWidth);
+        return { step, maxScrollLeft, padL, padR, gap, sourceWidth: metricsSource.scrollWidth };
+    };
+
+    const snapToPage = (el, page, total) => {
+        const { step, maxScrollLeft, padL, padR, gap, sourceWidth } = getPaginationMetrics(el);
+        const safePage = Math.max(0, Math.min(page, Math.max(0, total - 1)));
+        const virtualTargetLeft = safePage * step;
+        const targetLeft = isEditing ? 0 : Math.min(virtualTargetLeft, maxScrollLeft);
+        const visualOffset = isEditing
+            ? virtualTargetLeft
+            : Math.max(0, virtualTargetLeft - targetLeft);
+        const scrollHost = el;
+        scrollHost.scrollTo({ left: targetLeft, behavior: 'auto' });
+        setPageVisualOffset(visualOffset);
+        setDebugMetrics({ scrollLeft: targetLeft, step, maxScrollLeft });
+        return safePage;
+    };
 
 
     const toggleFullscreen = () => {
@@ -84,8 +119,8 @@ const StageMode = ({ onClose }) => {
 
     // Sincroniza o contenteditable com o texto da música quando o modo Editor abre
     useEffect(() => {
-        if (isEditing && lyricsViewRef.current && currentSong) {
-            const el = lyricsViewRef.current;
+        if (isEditing && editorContentRef.current && currentSong) {
+            const el = editorContentRef.current;
             if (el.innerText !== (currentSong.lyrics || '')) {
                 el.innerText = currentSong.lyrics || '';
             }
@@ -96,24 +131,33 @@ const StageMode = ({ onClose }) => {
     // Formatação de cifras para exibição
     const formatLyrics = (text) => {
         if (!text) return null;
-        // Dividimos apenas por linha para manter o ritmo vertical idêntico ao editor
-        const lines = text.split('\n');
-        
-        return lines.map((line, index) => {
-            const parts = line.split(/(\[[^\]]+\])/g);
+        const stanzas = text.split(/\n\s*\n/);
+
+        return stanzas.map((stanza, stanzaIndex) => {
+            const lines = stanza.split('\n');
             return (
-                <div key={index} className="lyric-line">
-                    {parts.length === 1 && parts[0] === '' ? (
-                        <>&nbsp;</>
-                    ) : (
-                        parts.map((part, partIndex) =>
-                            /^\[[^\]]+\]$/.test(part) ? (
-                                <span key={`${index}-${partIndex}`} className="chord">{part}</span>
-                            ) : (
-                                <React.Fragment key={`${index}-${partIndex}`}>{part}</React.Fragment>
-                            )
-                        )
-                    )}
+                <div
+                    key={stanzaIndex}
+                    className={`lyric-stanza ${keepStanzaTogether ? 'keep-stanza-together' : ''}`}
+                >
+                    {lines.map((line, lineIndex) => {
+                        const parts = line.split(/(\[[^\]]+\])/g);
+                        return (
+                            <div key={`${stanzaIndex}-${lineIndex}`} className="lyric-line">
+                                {parts.length === 1 && parts[0] === '' ? (
+                                    <>&nbsp;</>
+                                ) : (
+                                    parts.map((part, partIndex) =>
+                                        /^\[[^\]]+\]$/.test(part) ? (
+                                            <span key={`${stanzaIndex}-${lineIndex}-${partIndex}`} className="chord">{part}</span>
+                                        ) : (
+                                            <React.Fragment key={`${stanzaIndex}-${lineIndex}-${partIndex}`}>{part}</React.Fragment>
+                                        )
+                                    )
+                                )}
+                            </div>
+                        );
+                    })}
                 </div>
             );
         });
@@ -129,19 +173,13 @@ const StageMode = ({ onClose }) => {
                 // SEGURANÇA: Se a altura for muito pequena ou zero (durante o reflow), 
                 // não mede, pois os resultados serão fantasmas.
                 if (el.clientHeight < 100) return;
-
-                const style = window.getComputedStyle(el);
-                
-                const padL = parseFloat(style.paddingLeft) || 0;
-                const padR = parseFloat(style.paddingRight) || 0;
-                const padSum = padL + padR;
-                const gap = 64; 
-                
-                const step = el.clientWidth - padSum + gap;
-                const totalWidth = el.scrollWidth - padSum + gap;
-                
-                const pages = Math.max(1, Math.ceil(totalWidth / step));
+                const { step, maxScrollLeft } = getPaginationMetrics(el);
+                // Se houver qualquer overflow horizontal parcial,
+                // já existe uma próxima página válida.
+                const pages = Math.max(1, Math.ceil(maxScrollLeft / step) + 1);
                 setTotalPages(pages);
+                setDebugMetrics({ scrollLeft: el.scrollLeft, step, maxScrollLeft });
+                if (currentPage === 0) setPageVisualOffset(0);
                 if (!isEditing && pages === 1) {
                     const freeSpace = el.clientHeight - el.scrollHeight;
                     const extraTop = Math.max(0, Math.floor(freeSpace / 2));
@@ -152,8 +190,8 @@ const StageMode = ({ onClose }) => {
                 
                 // Sincroniza a página atual para não ficar em um índice inexistente
                 if (currentPage >= pages) {
-                    setCurrentPage(0);
-                    el.scrollTo({ left: 0, behavior: 'instant' });
+                    const snappedPage = snapToPage(el, pages - 1, pages);
+                    setCurrentPage(snappedPage);
                 }
             }
         };
@@ -163,18 +201,13 @@ const StageMode = ({ onClose }) => {
         });
 
         return () => cancelAnimationFrame(rafId);
-    }, [resolvedSongId, fontSize, activeCols, activeRepertoire, currentSong?.lyrics, isEditing, stageScale]);
+    }, [resolvedSongId, fontSize, activeCols, activeRepertoire, currentSong?.lyrics, isEditing, stageScale, editLayoutTick]);
 
     const scrollToPage = (page) => {
         if (lyricsViewRef.current) {
             const el = lyricsViewRef.current;
-            const step = el.clientWidth - 128 + 64; // 128 (padding total 64+64) + 64 (gap)
-            
-            el.scrollTo({
-                left: page * step,
-                behavior: 'smooth'
-            });
-            setCurrentPage(page);
+            const safePage = snapToPage(el, page, totalPages);
+            setCurrentPage(safePage);
         }
     };
 
@@ -246,12 +279,19 @@ const StageMode = ({ onClose }) => {
                     flushPendingLyrics(currentSong?.id);
                     setIsEditing(false);
                 }
+                if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'd' || e.key === 'D')) {
+                    e.preventDefault();
+                    setIsDebugMode((prev) => !prev);
+                }
                 return;
             }
 
             if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) {
                 e.preventDefault();
                 setIsSearchOpen(true);
+            } else if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'd' || e.key === 'D')) {
+                e.preventDefault();
+                setIsDebugMode((prev) => !prev);
             } else if (e.key === 'ArrowRight' || e.key === ' ') {
                 handleNext();
             } else if (e.key === 'ArrowLeft') {
@@ -269,6 +309,12 @@ const StageMode = ({ onClose }) => {
             if (saveLyricsTimeoutRef.current) clearTimeout(saveLyricsTimeoutRef.current);
         };
     }, []);
+
+    useEffect(() => {
+        if (!lyricsViewRef.current) return;
+        const el = lyricsViewRef.current;
+        snapToPage(el, currentPage, totalPages);
+    }, [currentPage, totalPages, activeCols, resolvedSongId, isEditing]);
 
     // Foco automático na busca quando abrir
     useEffect(() => {
@@ -301,7 +347,7 @@ const StageMode = ({ onClose }) => {
         <div className="w-full h-full flex flex-col">
             
             {/* Header de Controle do Palco */}
-            <header className="flex-shrink-0 bg-slate-900/80 backdrop-blur-md p-4 flex items-center justify-between border-b border-white/5 relative z-10">
+            <header className="flex-shrink-0 min-h-[104px] bg-slate-900/80 backdrop-blur-md px-6 py-4 flex items-center justify-between border-b border-white/5 relative z-10">
                 <div className="flex items-center gap-4">
                     <div className="flex flex-col">
                         {offScriptSong ? (
@@ -317,13 +363,13 @@ const StageMode = ({ onClose }) => {
                                 <MusicNotes weight="bold" /> Ensaio Avulso
                             </span>
                         )}
-                        <h2 className={`text-xl font-black truncate max-w-xs md:max-w-md ${offScriptSong ? 'text-amber-400' : ''}`}>
+                        <h2 className={`text-2xl font-black truncate max-w-xs md:max-w-md ${offScriptSong ? 'text-amber-400' : ''}`}>
                             {currentSong.title}
                         </h2>
                     </div>
-                    <div className="hidden md:flex flex-col opacity-40 ml-4 pl-4 border-l border-white/10">
-                        <span className="text-[10px] uppercase font-bold tracking-widest">Tom</span>
-                        <span className="font-black text-indigo-300">{currentSong.key || '--'}</span>
+                    <div className="hidden md:flex flex-col opacity-50 ml-4 pl-4 border-l border-white/10">
+                        <span className="text-[11px] uppercase font-bold tracking-widest">Tom</span>
+                        <span className="font-black text-lg text-indigo-300">{currentSong.key || '--'}</span>
                     </div>
 
                     {offScriptSong && (
@@ -337,36 +383,45 @@ const StageMode = ({ onClose }) => {
                     )}
                 </div>
 
-                <div className="flex items-center gap-2 md:gap-4">
+                <div className="flex items-center gap-3 md:gap-4">
                     {/* Pesquisa (CTRL+F) */}
                     <button 
                         onClick={() => setIsSearchOpen(!isSearchOpen)}
-                        className={`p-2 rounded-xl transition-all font-bold text-xs flex items-center gap-2 ${isSearchOpen ? 'bg-indigo-600 text-white' : 'hover:bg-white/10 text-slate-400 hover:text-white'}`}
+                        className={`p-2.5 rounded-xl transition-all font-bold text-sm flex items-center gap-2 ${isSearchOpen ? 'bg-indigo-600 text-white' : 'hover:bg-white/10 text-slate-400 hover:text-white'}`}
                         title="Buscar Música (Ctrl + F)"
                     >
-                        <MagnifyingGlass size={20} weight="bold" />
+                        <MagnifyingGlass size={22} weight="bold" />
                         <span className="hidden lg:inline mr-1">Buscar</span>
                     </button>
 
                     {/* Botões de Navegação (Só mostra se houver repertório) */}
                     {activeRepertoire && (
                         <div className="flex items-center bg-white/5 rounded-2xl p-1 gap-1 border border-white/10">
-                            <button onClick={handlePrev} className="p-2 hover:bg-white/10 rounded-xl transition-all"><CaretLeft size={20} weight="bold" /></button>
-                            <span className="text-xs font-bold px-2 whitespace-nowrap opacity-60">Pág. {currentPage + 1}/{totalPages}</span>
-                            <button onClick={handleNext} className="p-2 hover:bg-white/10 rounded-xl transition-all"><CaretRight size={20} weight="bold" /></button>
+                            <button onClick={handlePrev} className="p-2.5 hover:bg-white/10 rounded-xl transition-all"><CaretLeft size={22} weight="bold" /></button>
+                            <span className="text-sm font-bold px-2 whitespace-nowrap opacity-70">Pág. {currentPage + 1}/{totalPages}</span>
+                            <button onClick={handleNext} className="p-2.5 hover:bg-white/10 rounded-xl transition-all"><CaretRight size={22} weight="bold" /></button>
                         </div>
                     )}
                     
                     {/* Paginação Isolada (Para Música Avulsa) */}
                     {!activeRepertoire && (
-                        <div className="flex items-center bg-white/5 rounded-2xl py-1 px-3 gap-1 border border-white/10">
-                            <span className="text-xs font-bold px-2 whitespace-nowrap opacity-60">Pág. {currentPage + 1}/{totalPages}</span>
+                        <div className="flex items-center bg-white/5 rounded-2xl p-1 gap-1 border border-white/10">
+                            <button onClick={handlePrev} className="p-2.5 hover:bg-white/10 rounded-xl transition-all"><CaretLeft size={22} weight="bold" /></button>
+                            <span className="text-sm font-bold px-2 whitespace-nowrap opacity-70">Pág. {currentPage + 1}/{totalPages}</span>
+                            <button onClick={handleNext} className="p-2.5 hover:bg-white/10 rounded-xl transition-all"><CaretRight size={22} weight="bold" /></button>
                         </div>
                     )}
 
                     <span className="hidden xl:inline text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-lg border border-white/10 text-slate-400 bg-white/5">
                         Layout 16:9 fixo
                     </span>
+                    <button
+                        onClick={() => setKeepStanzaTogether((prev) => !prev)}
+                        className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest border transition-all ${keepStanzaTogether ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400/40' : 'bg-white/5 text-slate-400 border-white/10 hover:bg-white/10'}`}
+                        title="Evitar quebra de estrofe no fim da página"
+                    >
+                        Estrofes
+                    </button>
 
                     {/* Controles de Estilo e Edição */}
                     <div className="hidden lg:flex items-center gap-1">
@@ -377,7 +432,7 @@ const StageMode = ({ onClose }) => {
                                 }
                                 setIsEditing(!isEditing);
                             }}
-                            className={`px-3 py-1.5 rounded-xl transition-all text-xs font-bold tracking-wider uppercase flex items-center gap-2 ${isEditing ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20' : 'bg-white/10 text-slate-300 hover:bg-white/20'}`}
+                            className={`px-4 py-2 rounded-xl transition-all text-sm font-bold tracking-wider uppercase flex items-center gap-2 ${isEditing ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20' : 'bg-white/10 text-slate-300 hover:bg-white/20'}`}
                             title="Editar Letra ao Vivo"
                         >
                             {isEditing ? 'Sair do Modo Edição' : 'Editar'}
@@ -385,32 +440,32 @@ const StageMode = ({ onClose }) => {
                         
                         <div className="w-px h-6 bg-white/10 mx-1" />
 
-                        <button onClick={() => setFontSize(prev => Math.max(0.8, prev - 0.2))} className="p-2 hover:bg-white/10 rounded-xl"><TextT size={18} /></button>
-                        <button onClick={() => setFontSize(prev => Math.min(4, prev + 0.2))} className="p-2 hover:bg-white/10 rounded-xl"><TextT size={24} weight="bold" /></button>
+                        <button onClick={() => setFontSize(prev => Math.max(0.8, prev - 0.2))} className="p-2.5 hover:bg-white/10 rounded-xl"><TextT size={20} /></button>
+                        <button onClick={() => setFontSize(prev => Math.min(4, prev + 0.2))} className="p-2.5 hover:bg-white/10 rounded-xl"><TextT size={26} weight="bold" /></button>
                         <div className="w-px h-6 bg-white/10 mx-1" />
                         <button 
                             onClick={() => {
                                 const nextCols = activeCols === 2 ? 1 : 2;
                                 setStageColumnOverride(nextCols);
                             }}
-                            className={`p-2 rounded-xl transition-all ${activeCols === 2 ? 'bg-indigo-600 text-white' : 'hover:bg-white/10'}`}
+                            className={`p-2.5 rounded-xl transition-all ${activeCols === 2 ? 'bg-indigo-600 text-white' : 'hover:bg-white/10'}`}
                         >
-                            <Columns size={20} />
+                            <Columns size={22} />
                         </button>
                         <button 
                             onClick={toggleFullscreen}
-                            className="p-2 hover:bg-white/10 rounded-xl transition-all text-slate-400 hover:text-white"
+                            className="p-2.5 hover:bg-white/10 rounded-xl transition-all text-slate-400 hover:text-white"
                             title="Tela Cheia (F11)"
                         >
-                            <ArrowsOut size={20} weight="bold" />
+                            <ArrowsOut size={22} weight="bold" />
                         </button>
                     </div>
 
                     <button 
                         onClick={onClose}
-                        className="p-2 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-xl transition-all border border-red-500/20 active:scale-95"
+                        className="p-2.5 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-xl transition-all border border-red-500/20 active:scale-95"
                     >
-                        <XCircle size={24} weight="bold" />
+                        <XCircle size={26} weight="bold" />
                     </button>
                 </div>
             </header>
@@ -420,28 +475,41 @@ const StageMode = ({ onClose }) => {
                 <main
                     key="editor"
                     ref={lyricsViewRef}
-                    contentEditable
-                    suppressContentEditableWarning
-                    onInput={(e) => {
-                        saveLyricsDebounced(currentSong.id, e.currentTarget.innerText);
-                    }}
                     className="flex-1 overflow-x-hidden overflow-y-hidden py-8 outline-none caret-amber-400 selection:bg-amber-500/30"
-                    style={{
-                        paddingLeft: '64px',
-                        paddingRight: '64px',
-                        fontSize: `${fontSize}rem`,
-                        columnCount: activeCols,
-                        columnGap: '64px',
-                        columnWidth: activeCols === 1 ? '100%' : 'auto',
-                        columnFill: 'auto',
-                        whiteSpace: 'pre-wrap',
-                        wordBreak: 'break-word',
-                        color: '#ffffff',
-                        lineHeight: '1.6',
-                        fontFamily: 'inherit',
-                        cursor: 'text',
-                    }}
-                />
+                >
+                    <div
+                        ref={editorContentRef}
+                        contentEditable
+                        suppressContentEditableWarning
+                        onInput={(e) => {
+                            saveLyricsDebounced(currentSong.id, e.currentTarget.innerText);
+                            setEditLayoutTick((prev) => prev + 1);
+                            requestAnimationFrame(() => {
+                                if (lyricsViewRef.current) {
+                                    snapToPage(lyricsViewRef.current, currentPage, totalPages);
+                                }
+                            });
+                        }}
+                        className="h-full outline-none caret-amber-400 selection:bg-amber-500/30"
+                        style={{
+                            paddingLeft: '64px',
+                            paddingRight: '64px',
+                            transform: `translateX(-${pageVisualOffset}px)`,
+                            fontSize: `${fontSize}rem`,
+                            columnCount: activeCols,
+                            columnGap: '64px',
+                            columnWidth: activeCols === 1 ? '100%' : 'auto',
+                            columnFill: 'auto',
+                            whiteSpace: 'pre-wrap',
+                            wordBreak: 'break-word',
+                            color: '#ffffff',
+                            lineHeight: '1.6',
+                            fontFamily: 'inherit',
+                            cursor: 'text',
+                            minHeight: '100%',
+                        }}
+                    />
+                </main>
             ) : (
                 <main 
                     key="viewer"
@@ -463,7 +531,9 @@ const StageMode = ({ onClose }) => {
                         color: '#ffffff'
                     }}
                 >
-                    {formatLyrics(currentSong.lyrics)}
+                    <div style={{ transform: `translateX(-${pageVisualOffset}px)` }}>
+                        {formatLyrics(currentSong.lyrics)}
+                    </div>
                 </main>
             )}
 
@@ -542,11 +612,25 @@ const StageMode = ({ onClose }) => {
                 )}
             </footer>
 
+            {isDebugMode && (
+                <div className="absolute bottom-4 right-6 z-[180] bg-black/70 border border-emerald-400/30 rounded-xl px-3 py-2 text-[11px] font-mono text-emerald-300 pointer-events-none">
+                    <div>page: {currentPage + 1}/{totalPages}</div>
+                    <div>scrollLeft: {Math.round(debugMetrics.scrollLeft)}</div>
+                    <div>step: {Math.round(debugMetrics.step)}</div>
+                    <div>maxScrollLeft: {Math.round(debugMetrics.maxScrollLeft)}</div>
+                </div>
+            )}
+
             {/* Estilos específicos para o Modo Palco */}
             <style dangerouslySetInnerHTML={{ __html: `
                 .lyric-stanza {
                     margin-bottom: 1.6em;
                     position: relative;
+                }
+                .keep-stanza-together {
+                    break-inside: avoid-column;
+                    -webkit-column-break-inside: avoid;
+                    page-break-inside: avoid;
                 }
                 .lyric-line {
                     display: block;
