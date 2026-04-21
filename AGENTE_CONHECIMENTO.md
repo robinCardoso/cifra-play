@@ -54,7 +54,8 @@ Paginação é controlada por `scrollLeft` horizontal no container de letra.
 - **Step oficial**: `step = contentWidth + columnGap`, onde `contentWidth = clientWidth - paddingLeft - paddingRight`.
 - **Limite**: `maxScrollLeft = scrollWidth - clientWidth`.
 - **Total de páginas**: `totalPages = Math.max(1, Math.ceil(maxScrollLeft / step) + 1)`.
-- **Snap obrigatório**: toda navegação deve usar `scrollLeft = clamp(page * step, 0, maxScrollLeft)`.
+- **Snap obrigatório (Viewer)**: `scrollLeft = clamp(page * step, 0, maxScrollLeft)`.
+- **Snap obrigatório (Editor)**: o editor usa `pageVisualOffset` virtual para representar a página atual, sem depender de `scrollLeft` real do `contentEditable`.
 
 Isso evita:
 - repetição da coluna direita na página seguinte,
@@ -73,7 +74,7 @@ Checklist obrigatório ao mexer em paginação:
 1. Validar `Pág. 1` e `Pág. 2` com a mesma música longa em `2 colunas`.
 2. Confirmar que a margem esquerda visual é idêntica nas duas páginas.
 3. Confirmar ausência de texto "cortado/vazando" no canto direito.
-4. Com debug ativo (`Ctrl+Shift+D`), verificar se o avanço de página segue o `step` calculado.
+4. Confirmar que Viewer e Editor mostram o mesmo conteúdo por página (paridade visual de navegação).
 5. Validar também o `Modo Edição` (2 colunas) para garantir ausência de coluna residual no canto esquerdo.
 
 ### 4. Reflow e Estabilidade Durante Edição
@@ -83,14 +84,15 @@ Durante edição (`contentEditable`), o layout muda em tempo real e precisa de r
 - **Re-snap pós-input**: após `onInput`, executar realinhamento via `requestAnimationFrame`.
 - **Guard de medição**: abortar cálculo quando `clientHeight < 100` para evitar medições instáveis em transição.
 - **Duplo RAF**: manter medição após reflow com dupla chamada de `requestAnimationFrame` para evitar corrida de layout.
-- **Compensação de última página**: usar `pageVisualOffset` quando o alvo virtual da página exceder o `maxScrollLeft`.
-- **Regra estrutural do editor**: aplicar compensação na camada interna `contentEditable` (wrapper interno), nunca diretamente no container de scroll `main`.
+- **Compensação de última página (Viewer)**: usar `pageVisualOffset` quando o alvo virtual da página exceder o `maxScrollLeft`.
+- **Estratégia oficial do Editor**: paginação por offset virtual (`pageVisualOffset`) para manter estabilidade quando o `contentEditable` não respeita `scrollLeft` horizontal de forma consistente.
+- **Regra estrutural do editor**: manter `main` como viewport e `contentEditable` em camada interna; não acoplar navegação da página exclusivamente ao `scrollLeft` do editor.
 
 ### 5. Regras de Teclado e UX
 - Em edição, **não** navegar página com setas/espaço.
 - Em edição, `Escape` sai do modo edição (não fecha o palco direto).
 - Busca (`Ctrl+F`) abre pesquisa rápida de músicas.
-- Debug é oculto e alternado apenas por atalho `Ctrl+Shift+D`.
+- Se debug técnico for reativado no futuro, ele deve permanecer oculto para usuários finais e não pode afetar a lógica de paginação.
 
 ### 6. Renderização de Letra e Segurança
 - Sem `dangerouslySetInnerHTML` para letra principal.
@@ -110,6 +112,12 @@ Regra: esta proteção melhora legibilidade de bloco, mas pode alterar a distrib
 - Header ampliado para uso em palco (tipografia e botões maiores).
 - Selo informativo de layout fixo (`Layout 16:9 fixo`).
 - Rodapé reduz dinamicamente quando há pouco conteúdo (menos espaço morto visual).
+
+### 9. Regras para Futuras Melhorias (Sem Regressão)
+- Alterações de layout no Editor devem preservar paridade visual com Viewer em `1` e `2` colunas.
+- Qualquer mudança em `padding`, `columnGap`, `columnWidth` ou `line-height` exige validação manual de `Pág. 1` e `Pág. 2`.
+- Nunca misturar correções de paginação com múltiplas estratégias concorrentes ao mesmo tempo; manter uma estratégia oficial por modo (Viewer x Editor).
+- Antes de release, validar 4 cenários mínimos: Viewer 1 coluna, Viewer 2 colunas, Editor 1 coluna, Editor 2 colunas.
 
 ## 💾 Persistência e Estado
 - **Auto-Save com Debounce**: O `StageMode` usa `onInput` com debounce para reduzir custo de render e escrita em `localStorage`.
