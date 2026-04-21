@@ -7,9 +7,18 @@ import { registerSW } from 'virtual:pwa-register'
 
 const updateSW = registerSW({
   onNeedRefresh() {
-    if (confirm('Nova versão do Cifra&Play disponível. Atualizar agora?')) {
-      updateSW(true)
-    }
+    updateSW(true)
+  },
+  onRegisteredSW(_, registration) {
+    if (!registration) return
+
+    const checkForUpdates = () => registration.update()
+    setInterval(checkForUpdates, 60_000)
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        checkForUpdates()
+      }
+    })
   },
   onOfflineReady() {
     console.log('App pronto para funcionar offline!')
