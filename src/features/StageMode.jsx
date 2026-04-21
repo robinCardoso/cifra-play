@@ -14,6 +14,9 @@ import {
 } from '@phosphor-icons/react';
 
 const StageMode = ({ onClose }) => {
+    const BASE_STAGE_WIDTH = 1920;
+    const BASE_STAGE_HEIGHT = 1080;
+
     const { 
         activeRepertoire, 
         songLibrary, 
@@ -34,12 +37,17 @@ const StageMode = ({ onClose }) => {
     
     const [currentPage, setCurrentPage] = useState(0);
     const [totalPages, setTotalPages] = useState(1);
+    const [stageScale, setStageScale] = useState(1);
+    const [centerOffsetTop, setCenterOffsetTop] = useState(0);
+    const [stageColumnOverride, setStageColumnOverride] = useState(null);
     
     // Estados da Busca (On-the-fly)
     const [isSearchOpen, setIsSearchOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [offScriptSong, setOffScriptSong] = useState(null);
     const searchInputRef = useRef(null);
+    const saveLyricsTimeoutRef = useRef(null);
+    const pendingLyricsRef = useRef('');
 
     const lyricsViewRef = useRef(null);
 
@@ -47,17 +55,32 @@ const StageMode = ({ onClose }) => {
     const toggleFullscreen = () => {
         if (!document.fullscreenElement) {
             document.documentElement.requestFullscreen().catch(e => console.error(e));
-        } else {
-            if (document.exitFullscreen) document.exitFullscreen();
+        } else if (document.exitFullscreen) {
+            document.exitFullscreen();
         }
     };
+
+    useEffect(() => {
+        const updateStageScale = () => {
+            const widthRatio = window.innerWidth / BASE_STAGE_WIDTH;
+            const heightRatio = window.innerHeight / BASE_STAGE_HEIGHT;
+            setStageScale(Math.max(0.2, Math.min(widthRatio, heightRatio)));
+        };
+
+        updateStageScale();
+        window.addEventListener('resize', updateStageScale);
+        return () => window.removeEventListener('resize', updateStageScale);
+    }, []);
     const resolvedSongId = activeRepertoire?.songIds[currentIndex] || activeSongId;
     const currentSong = offScriptSong || songLibrary.find(s => s.id === resolvedSongId);
     const nextSongId = activeRepertoire?.songIds[currentIndex + 1];
     const nextSong = offScriptSong ? null : songLibrary.find(s => s.id === nextSongId);
 
-    // Motor de Decisão de Colunas (Prioridade: Preferência da Música > Configuração Global)
-    const activeCols = currentSong?.columns || columnCount || 1;
+    // Motor de Decisão de Colunas:
+    // 1) Override da sessão de palco (botão de colunas no StageMode)
+    // 2) Preferência da música
+    // 3) Configuração global
+    const activeCols = stageColumnOverride ?? currentSong?.columns ?? columnCount ?? 1;
 
     // Sincroniza o contenteditable com o texto da música quando o modo Editor abre
     useEffect(() => {
@@ -66,6 +89,7 @@ const StageMode = ({ onClose }) => {
             if (el.innerText !== (currentSong.lyrics || '')) {
                 el.innerText = currentSong.lyrics || '';
             }
+            pendingLyricsRef.current = currentSong.lyrics || '';
         }
     }, [isEditing, resolvedSongId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -76,13 +100,21 @@ const StageMode = ({ onClose }) => {
         const lines = text.split('\n');
         
         return lines.map((line, index) => {
-            const formattedLine = line.replace(/\[([^\]]+)\]/g, '<span class="chord">[$1]</span>');
+            const parts = line.split(/(\[[^\]]+\])/g);
             return (
-                <div 
-                    key={index} 
-                    className="lyric-line" 
-                    dangerouslySetInnerHTML={{ __html: formattedLine || '&nbsp;' }} 
-                />
+                <div key={index} className="lyric-line">
+                    {parts.length === 1 && parts[0] === '' ? (
+                        <>&nbsp;</>
+                    ) : (
+                        parts.map((part, partIndex) =>
+                            /^\[[^\]]+\]$/.test(part) ? (
+                                <span key={`${index}-${partIndex}`} className="chord">{part}</span>
+                            ) : (
+                                <React.Fragment key={`${index}-${partIndex}`}>{part}</React.Fragment>
+                            )
+                        )
+                    )}
+                </div>
             );
         });
     };
@@ -108,8 +140,15 @@ const StageMode = ({ onClose }) => {
                 const step = el.clientWidth - padSum + gap;
                 const totalWidth = el.scrollWidth - padSum + gap;
                 
-                const pages = Math.max(1, Math.round(totalWidth / step));
+                const pages = Math.max(1, Math.ceil(totalWidth / step));
                 setTotalPages(pages);
+                if (!isEditing && pages === 1) {
+                    const freeSpace = el.clientHeight - el.scrollHeight;
+                    const extraTop = Math.max(0, Math.floor(freeSpace / 2));
+                    setCenterOffsetTop(extraTop);
+                } else {
+                    setCenterOffsetTop(0);
+                }
                 
                 // Sincroniza a página atual para não ficar em um índice inexistente
                 if (currentPage >= pages) {
@@ -124,7 +163,7 @@ const StageMode = ({ onClose }) => {
         });
 
         return () => cancelAnimationFrame(rafId);
-    }, [resolvedSongId, fontSize, activeCols, activeRepertoire, currentSong?.lyrics, isEditing]);
+    }, [resolvedSongId, fontSize, activeCols, activeRepertoire, currentSong?.lyrics, isEditing, stageScale]);
 
     const scrollToPage = (page) => {
         if (lyricsViewRef.current) {
@@ -155,6 +194,28 @@ const StageMode = ({ onClose }) => {
         }
     };
 
+    const saveLyricsDebounced = (songId, lyrics) => {
+        pendingLyricsRef.current = lyrics;
+        if (saveLyricsTimeoutRef.current) {
+            clearTimeout(saveLyricsTimeoutRef.current);
+        }
+        saveLyricsTimeoutRef.current = setTimeout(() => {
+            updateSong(songId, { lyrics: pendingLyricsRef.current });
+            saveLyricsTimeoutRef.current = null;
+        }, 250);
+    };
+
+    const flushPendingLyrics = (songId) => {
+        if (!songId) return;
+        if (saveLyricsTimeoutRef.current) {
+            clearTimeout(saveLyricsTimeoutRef.current);
+            saveLyricsTimeoutRef.current = null;
+        }
+        if (typeof pendingLyricsRef.current === 'string') {
+            updateSong(songId, { lyrics: pendingLyricsRef.current });
+        }
+    };
+
     // Voltar página ou ir para música anterior (indo direto para a última página dela)
     const handlePrev = () => {
         if (offScriptSong) {
@@ -180,6 +241,14 @@ const StageMode = ({ onClose }) => {
                 return;
             }
 
+            if (isEditing) {
+                if (e.key === 'Escape') {
+                    flushPendingLyrics(currentSong?.id);
+                    setIsEditing(false);
+                }
+                return;
+            }
+
             if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) {
                 e.preventDefault();
                 setIsSearchOpen(true);
@@ -193,7 +262,13 @@ const StageMode = ({ onClose }) => {
         };
         window.addEventListener('keydown', handleKeys);
         return () => window.removeEventListener('keydown', handleKeys);
-    }, [currentPage, totalPages, currentIndex, offScriptSong, isSearchOpen]);
+    }, [currentPage, totalPages, currentIndex, offScriptSong, isSearchOpen, isEditing, currentSong?.id]);
+
+    useEffect(() => {
+        return () => {
+            if (saveLyricsTimeoutRef.current) clearTimeout(saveLyricsTimeoutRef.current);
+        };
+    }, []);
 
     // Foco automático na busca quando abrir
     useEffect(() => {
@@ -213,7 +288,17 @@ const StageMode = ({ onClose }) => {
     ).slice(0, 8); // Limite de visualização rápida
 
     return (
-        <div className="fixed inset-0 z-[220] bg-slate-950 text-white flex flex-col font-sans animate-in fade-in duration-300">
+        <div className="fixed inset-0 z-[220] bg-slate-950 overflow-hidden">
+            <div
+                className="absolute left-1/2 top-1/2 text-white font-sans animate-in fade-in duration-300"
+                style={{
+                    width: `${BASE_STAGE_WIDTH}px`,
+                    height: `${BASE_STAGE_HEIGHT}px`,
+                    transform: `translate(-50%, -50%) scale(${stageScale})`,
+                    transformOrigin: 'center center',
+                }}
+            >
+        <div className="w-full h-full flex flex-col">
             
             {/* Header de Controle do Palco */}
             <header className="flex-shrink-0 bg-slate-900/80 backdrop-blur-md p-4 flex items-center justify-between border-b border-white/5 relative z-10">
@@ -279,10 +364,19 @@ const StageMode = ({ onClose }) => {
                         </div>
                     )}
 
+                    <span className="hidden xl:inline text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-lg border border-white/10 text-slate-400 bg-white/5">
+                        Layout 16:9 fixo
+                    </span>
+
                     {/* Controles de Estilo e Edição */}
                     <div className="hidden lg:flex items-center gap-1">
                         <button 
-                            onClick={() => setIsEditing(!isEditing)}
+                            onClick={() => {
+                                if (isEditing) {
+                                    flushPendingLyrics(currentSong?.id);
+                                }
+                                setIsEditing(!isEditing);
+                            }}
                             className={`px-3 py-1.5 rounded-xl transition-all text-xs font-bold tracking-wider uppercase flex items-center gap-2 ${isEditing ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20' : 'bg-white/10 text-slate-300 hover:bg-white/20'}`}
                             title="Editar Letra ao Vivo"
                         >
@@ -295,8 +389,11 @@ const StageMode = ({ onClose }) => {
                         <button onClick={() => setFontSize(prev => Math.min(4, prev + 0.2))} className="p-2 hover:bg-white/10 rounded-xl"><TextT size={24} weight="bold" /></button>
                         <div className="w-px h-6 bg-white/10 mx-1" />
                         <button 
-                            onClick={() => setColumnCount(c => c === 1 ? 2 : 1)}
-                            className={`p-2 rounded-xl transition-all ${columnCount === 2 ? 'bg-indigo-600 text-white' : 'hover:bg-white/10'}`}
+                            onClick={() => {
+                                const nextCols = activeCols === 2 ? 1 : 2;
+                                setStageColumnOverride(nextCols);
+                            }}
+                            className={`p-2 rounded-xl transition-all ${activeCols === 2 ? 'bg-indigo-600 text-white' : 'hover:bg-white/10'}`}
                         >
                             <Columns size={20} />
                         </button>
@@ -326,7 +423,7 @@ const StageMode = ({ onClose }) => {
                     contentEditable
                     suppressContentEditableWarning
                     onInput={(e) => {
-                        updateSong(currentSong.id, { lyrics: e.currentTarget.innerText });
+                        saveLyricsDebounced(currentSong.id, e.currentTarget.innerText);
                     }}
                     className="flex-1 overflow-x-hidden overflow-y-hidden py-8 outline-none caret-amber-400 selection:bg-amber-500/30"
                     style={{
@@ -353,6 +450,8 @@ const StageMode = ({ onClose }) => {
                     style={{ 
                         paddingLeft: '64px',
                         paddingRight: '64px',
+                        paddingTop: `calc(2rem + ${centerOffsetTop}px)`,
+                        paddingBottom: '2rem',
                         fontSize: `${fontSize}rem`,
                         lineHeight: '1.6',
                         columnCount: activeCols,
@@ -425,7 +524,7 @@ const StageMode = ({ onClose }) => {
             )}
 
             {/* Rodapé / Progress Indicator */}
-            <footer className="flex-shrink-0 h-16 flex items-center justify-between px-6 bg-gradient-to-t from-black/50 to-transparent pointer-events-none">
+            <footer className={`flex-shrink-0 ${totalPages === 1 && !nextSong ? 'h-8' : 'h-16'} flex items-center justify-between px-6 bg-gradient-to-t from-black/50 to-transparent pointer-events-none`}>
                 <div className="flex gap-2">
                     {Array.from({ length: totalPages }).map((_, i) => (
                         <div 
@@ -465,6 +564,8 @@ const StageMode = ({ onClose }) => {
                     column-fill: auto;
                 }
             `}} />
+        </div>
+        </div>
         </div>
     );
 };

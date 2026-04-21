@@ -20,17 +20,6 @@ const SongEditor = () => {
         setIsStageMode, setActiveSongId
     } = useLibrary();
 
-    // Cálculo dinâmico das guias baseado no tamanho da letra e colunas do palco
-    // Assumimos que o StageMode renderiza na tela uma área útil média de 35~38rem.
-    // Multiplicamos o fontSize por 1.5 para considerar a altura real da linha (line-height)
-    const linesPerColumn = Math.max(10, Math.floor(38 / (fontSize * 1.5)));
-    const totalLinesPerPage = linesPerColumn * (columnCount || 1); 
-    
-    // Altura ABSOLUTA da linha no editor para sincronizar o background perfeitamente
-    const editorLineHeight = 1.75; // Equivalente a leading-[1.75rem]
-    const columnBreakInterval = linesPerColumn * editorLineHeight;
-    const pageBreakInterval = totalLinesPerPage * editorLineHeight;
-
     const textareaRef = useRef(null);
     const audioInputRef = useRef(null);
 
@@ -245,6 +234,9 @@ const SongEditor = () => {
                         >
                             Ver no Palco
                         </button>
+                        <span className="hidden md:inline text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                            A quebra real e visualizacao final sao validadas no palco
+                        </span>
 
                         <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800/50 p-1 rounded-lg">
                             <Columns size={14} className="text-slate-400 ml-1" />
@@ -269,16 +261,7 @@ const SongEditor = () => {
                         onChange={(e) => handleFieldChange('lyrics', e.target.value)}
                         placeholder="Cole aqui sua letra com cifras..."
                         className="h-full w-full bg-transparent p-8 outline-none resize-none font-mono text-base md:text-lg leading-[1.75rem] text-slate-700 dark:text-slate-300 placeholder-slate-300 dark:placeholder-slate-800 relative z-30"
-                        style={{ 
-                            backgroundImage: `
-                                linear-gradient(to bottom, transparent calc(${pageBreakInterval}rem - 0.1rem), rgba(245, 158, 11, 0.8) calc(${pageBreakInterval}rem - 0.1rem), rgba(245, 158, 11, 0.8) calc(${pageBreakInterval}rem + 0.1rem), transparent calc(${pageBreakInterval}rem + 0.1rem)),
-                                linear-gradient(to bottom, transparent calc(${columnBreakInterval}rem - 0.05rem), rgba(236, 72, 153, 0.5) calc(${columnBreakInterval}rem - 0.05rem), rgba(236, 72, 153, 0.5) calc(${columnBreakInterval}rem + 0.05rem), transparent calc(${columnBreakInterval}rem + 0.05rem)),
-                                linear-gradient(to bottom, rgba(99, 102, 241, 0.05) 1px, transparent 1px)
-                            `,
-                            backgroundSize: `100% ${pageBreakInterval}rem, 100% ${columnBreakInterval}rem, 100% ${editorLineHeight}rem`,
-                            backgroundAttachment: 'local',
-                            backgroundRepeat: 'repeat-y'
-                        }}
+                        style={{}}
                     />
                 </div>
             </div>
