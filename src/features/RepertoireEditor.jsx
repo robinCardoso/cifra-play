@@ -26,13 +26,15 @@ const RepertoireEditor = () => {
     const [styleFilter, setStyleFilter] = useState('');
 
     const librarySongs = useMemo(() => {
+        const repertoireSongIds = new Set(activeRepertoire ? activeRepertoire.songIds : []);
         return songLibrary.filter(song => {
+            if (repertoireSongIds.has(song.id)) return false;
             const matchSearch = song.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
                                 song.artist.toLowerCase().includes(searchTerm.toLowerCase());
             const matchStyle = styleFilter ? song.style === styleFilter : true;
             return matchSearch && matchStyle;
         });
-    }, [songLibrary, searchTerm, styleFilter]);
+    }, [songLibrary, searchTerm, styleFilter, activeRepertoire]);
 
     if (!activeRepertoire) return null;
 
