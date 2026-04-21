@@ -1,6 +1,10 @@
 import React, { useRef, useState } from 'react';
 import { useLibrary } from '../store/LibraryContext';
-import { X, Moon, Sun, Key, DownloadSimple, UploadSimple, CheckCircle, Warning } from '@phosphor-icons/react';
+import { 
+    X, Moon, Sun, Key, DownloadSimple, UploadSimple, 
+    CheckCircle, Warning, FolderOpen, HardDrive,
+    ArrowsClockwise, XCircle, ShieldCheck, Info
+} from '@phosphor-icons/react';
 
 const SettingsModal = () => {
     const { 
@@ -9,7 +13,15 @@ const SettingsModal = () => {
         licenseKey, isLicensed, activateLicense, licenseError,
         songLibrary, repertoires, artists, keys, styles,
         setSongLibrary, setRepertoires, setArtists, setKeys, setStyles,
-        requestConfirm
+        requestConfirm,
+        // Auto Backup
+        isSupported: backupApiSupported,
+        autoBackupEnabled,
+        backupStatus,
+        lastBackupTime,
+        backupDirName,
+        selectBackupFolder,
+        disableAutoBackup,
     } = useLibrary();
 
     const [keyInput, setKeyInput] = useState(licenseKey || '');
@@ -143,6 +155,97 @@ const SettingsModal = () => {
                                 <UploadSimple size={24} /> Restaurar (.json)
                             </button>
                         </div>
+                    </section>
+
+                    {/* Backup Automático */}
+                    <section className="space-y-3">
+                        <h3 className="text-xs uppercase font-black text-slate-400 tracking-widest flex items-center gap-2">
+                            <HardDrive size={14} /> Backup Automático em Pasta
+                        </h3>
+
+                        {/* Aviso sobre compatibilidade */}
+                        {!backupApiSupported && (
+                            <div className="flex items-start gap-3 bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4">
+                                <Warning size={20} weight="fill" className="text-amber-400 flex-shrink-0 mt-0.5" />
+                                <p className="text-xs text-amber-300 leading-relaxed">
+                                    Seu navegador não suporta seleção de pasta local. <br />
+                                    Use <strong>Chrome, Edge ou Opera</strong> no desktop para ativar essa função.
+                                </p>
+                            </div>
+                        )}
+
+                        {backupApiSupported && !autoBackupEnabled && (
+                            <>
+                                {/* Card informativo */}
+                                <div className="flex items-start gap-3 bg-indigo-500/10 border border-indigo-500/30 rounded-2xl p-4">
+                                    <Info size={20} weight="fill" className="text-indigo-400 flex-shrink-0 mt-0.5" />
+                                    <div className="text-xs text-indigo-300 leading-relaxed space-y-1">
+                                        <p className="font-bold text-indigo-200">Como funciona?</p>
+                                        <p>Selecione uma pasta no seu computador. A cada alteração, o app salva automaticamente um arquivo <code className="bg-indigo-900/50 px-1 rounded">CifraPlay_AutoBackup.json</code> nessa pasta.</p>
+                                        <p className="text-indigo-400">O navegador pedirá sua permissão antes de qualquer gravação.</p>
+                                    </div>
+                                </div>
+
+                                {/* Botão selecionar pasta */}
+                                <button
+                                    onClick={selectBackupFolder}
+                                    className="w-full py-4 px-4 rounded-2xl flex items-center justify-center gap-3 font-bold text-sm bg-slate-50 hover:bg-indigo-50 text-slate-700 hover:text-indigo-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-indigo-500/20 dark:hover:text-indigo-300 transition-all border border-slate-200 dark:border-slate-700 border-b-4 active:border-b active:translate-y-[3px]"
+                                >
+                                    <FolderOpen size={22} />
+                                    Selecionar Pasta de Backup
+                                </button>
+                            </>
+                        )}
+
+                        {backupApiSupported && autoBackupEnabled && (
+                            <div className="bg-slate-800/50 border border-slate-700 rounded-2xl p-4 space-y-3">
+                                {/* Pasta selecionada */}
+                                <div className="flex items-center gap-3">
+                                    <FolderOpen size={20} className="text-emerald-400 flex-shrink-0" />
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-xs text-slate-400 font-bold uppercase tracking-wide">Pasta Ativa</p>
+                                        <p className="text-sm font-bold text-white truncate">{backupDirName || 'Pasta selecionada'}</p>
+                                    </div>
+                                </div>
+
+                                {/* Status do último backup */}
+                                <div className="flex items-center gap-3 bg-slate-900/60 rounded-xl px-3 py-2">
+                                    {backupStatus === 'saving' && <ArrowsClockwise size={16} className="text-indigo-400 animate-spin" />}
+                                    {backupStatus === 'ok' && <CheckCircle size={16} weight="fill" className="text-emerald-400" />}
+                                    {backupStatus === 'error' && <XCircle size={16} weight="fill" className="text-red-400" />}
+                                    {backupStatus === 'no_permission' && <ShieldCheck size={16} weight="fill" className="text-amber-400" />}
+                                    {backupStatus === 'idle' && <HardDrive size={16} className="text-slate-500" />}
+
+                                    <span className="text-xs text-slate-300 flex-1">
+                                        {backupStatus === 'saving' && 'Salvando backup...'}
+                                        {backupStatus === 'ok' && (
+                                            lastBackupTime
+                                                ? `Salvo às ${lastBackupTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`
+                                                : 'Backup ativo — aguardando alterações'
+                                        )}
+                                        {backupStatus === 'error' && 'Erro ao salvar. Verifique as permissões.'}
+                                        {backupStatus === 'no_permission' && 'Permissão negada. Clique abaixo para reconfigurar.'}
+                                        {backupStatus === 'idle' && 'Backup automático ativo'}
+                                    </span>
+                                </div>
+
+                                {/* Ações */}
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={selectBackupFolder}
+                                        className="flex-1 py-2 rounded-xl flex items-center justify-center gap-2 text-xs font-bold bg-slate-700 hover:bg-slate-600 text-slate-300 hover:text-white transition-colors"
+                                    >
+                                        <FolderOpen size={14} /> Trocar Pasta
+                                    </button>
+                                    <button
+                                        onClick={disableAutoBackup}
+                                        className="flex-1 py-2 rounded-xl flex items-center justify-center gap-2 text-xs font-bold bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-300 border border-red-500/20 transition-colors"
+                                    >
+                                        <XCircle size={14} /> Desativar
+                                    </button>
+                                </div>
+                            </div>
+                        )}
                     </section>
                     
                     {/* Alertas Rapidos */}

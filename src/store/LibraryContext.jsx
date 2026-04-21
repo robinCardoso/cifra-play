@@ -1,12 +1,14 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 import { usePersistence } from '../hooks/usePersistence';
 import { useLicense } from '../hooks/useLicense';
+import { useAutoBackup } from '../hooks/useAutoBackup';
 
 const LibraryContext = createContext();
 
 export const LibraryProvider = ({ children }) => {
   const persistenceSet = usePersistence();
   const licenseSet = useLicense();
+  const autoBackup = useAutoBackup();
   
   // Selection state
   const [activeSongId, setActiveSongId] = useState(null);
@@ -85,9 +87,31 @@ export const LibraryProvider = ({ children }) => {
     );
   };
 
+  // Dispara o backup automático sempre que os dados principais mudam
+  useEffect(() => {
+    if (!autoBackup.autoBackupEnabled) return;
+    const data = {
+      songLibrary: persistenceSet.songLibrary,
+      repertoires: persistenceSet.repertoires,
+      artists: persistenceSet.artists,
+      keys: persistenceSet.keys,
+      styles: persistenceSet.styles,
+    };
+    autoBackup.saveBackupToFile(data);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    persistenceSet.songLibrary,
+    persistenceSet.repertoires,
+    persistenceSet.artists,
+    persistenceSet.keys,
+    persistenceSet.styles,
+    autoBackup.autoBackupEnabled,
+  ]);
+
   const value = {
     ...persistenceSet,
     ...licenseSet,
+    ...autoBackup,
     activeSongId, setActiveSongId,
     activeSong,
     activeRepertoireId, setActiveRepertoireId,
