@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useLibrary } from '../store/LibraryContext';
+import BackupBanner from './BackupBanner';
 import { 
   MusicNotesPlus, 
   Playlist, 
@@ -144,6 +145,9 @@ const Sidebar = () => {
           )}
         </div>
       </section>
+
+      {/* Banner de aviso: backup não configurado */}
+      <BackupBanner />
 
     </aside>
   );
