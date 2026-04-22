@@ -3,6 +3,7 @@ import Sidebar from './Sidebar';
 import BottomNav from './BottomNav';
 import MobileDrawer from './MobileDrawer';
 import useIsMobile from '../hooks/useIsMobile';
+import BackupBanner from './BackupBanner';
 
 const Layout = ({ children }) => {
   const isMobile = useIsMobile();
@@ -23,6 +24,11 @@ const Layout = ({ children }) => {
       {/* ── Mobile: Barra inferior + Drawer ── */}
       {isMobile && (
         <>
+          {/* Alerta de Backup Mobile (Flutuante acima da Nav) */}
+          <div className="px-4 pb-2">
+            <BackupBanner compact />
+          </div>
+          
           <BottomNav
             activeTab={activeTab}
             setActiveTab={setActiveTab}
