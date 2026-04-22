@@ -151,7 +151,7 @@ const SettingsModal = () => {
                                     Licença {isLicensed ? 'Ativa e Validada' : 'Aguardando Ativação'}
                                 </span>
                             </div>
-                            <div className="flex gap-2">
+                            <div className="flex gap-2 relative">
                                 <Key size={20} className="text-slate-400 absolute mt-3 ml-3" />
                                 <input 
                                     type="text" 
