@@ -23,7 +23,7 @@ const ManagerView = () => {
                 <MusicNotes size={48} weight="duotone" />
             </div>
             <div className="space-y-1">
-                <h2 className="text-2xl font-black tracking-tight">Cifra & Play V2</h2>
+                <h2 className="text-2xl font-black tracking-tight">Cifra & Play</h2>
                 <p className="text-slate-500 max-w-xs text-sm">
                     {isMobile
                         ? 'Toque em Repertórios ou Biblioteca na barra inferior para começar.'

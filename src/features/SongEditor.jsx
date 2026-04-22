@@ -59,7 +59,7 @@ const SongEditor = () => {
         {/* ══════════════════════════════════════════════════════
             MOBILE: layout scrollável — tudo em fluxo vertical
             ══════════════════════════════════════════════════════ */}
-        <div className="flex md:hidden flex-1 flex-col min-h-0 overflow-y-auto bg-slate-50 dark:bg-slate-900 animate-in fade-in duration-300"
+        <div className="flex lg:hidden flex-1 flex-col min-h-0 overflow-y-auto bg-slate-50 dark:bg-slate-900 animate-in fade-in duration-300"
              style={{ WebkitOverflowScrolling: 'touch' }}>
 
             {/* Linha 1: Voltar + Ações (ícones apenas) */}
@@ -194,7 +194,7 @@ const SongEditor = () => {
         {/* ══════════════════════════════════════════════════════
             DESKTOP: layout flex-col original (sem scroll geral)
             ══════════════════════════════════════════════════════ */}
-        <div className="hidden md:flex flex-1 flex-col overflow-hidden bg-slate-50 dark:bg-slate-900 p-8 animate-in fade-in duration-500">
+        <div className="hidden lg:flex flex-1 flex-col overflow-hidden bg-slate-50 dark:bg-slate-900 p-8 animate-in fade-in duration-500">
             
             {/* Cabeçalho do Editor */}
             <div className="flex-shrink-0 space-y-4 mb-6">

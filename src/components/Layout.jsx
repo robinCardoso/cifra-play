@@ -16,7 +16,7 @@ const Layout = ({ children }) => {
       {!isMobile && <Sidebar />}
 
       {/* ── Conteúdo Principal ── */}
-      <main className={`flex-1 flex flex-col relative overflow-hidden bg-slate-50 dark:bg-slate-900 ${!isMobile ? 'shadow-xl md:rounded-l-3xl' : 'min-h-0'}`}>
+      <main className={`flex-1 flex flex-col relative overflow-hidden bg-slate-50 dark:bg-slate-900 ${!isMobile ? 'shadow-xl lg:rounded-l-3xl' : 'min-h-0'}`}>
         {children}
       </main>
 

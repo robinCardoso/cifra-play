@@ -26,6 +26,7 @@ const SettingsModal = () => {
 
     const [keyInput, setKeyInput] = useState(licenseKey || '');
     const [successMsg, setSuccessMsg] = useState('');
+    const [importMode, setImportMode] = useState('restore'); // 'restore' ou 'merge'
     const fileInputRef = useRef(null);
 
     if (!isSettingsModalOpen) return null;
@@ -51,20 +52,51 @@ const SettingsModal = () => {
         const file = e.target.files[0];
         if (!file) return;
 
+        const isMerge = importMode === 'merge';
+
         requestConfirm(
-            'Restaurar Backup',
-            'Deseja substituir sua biblioteca atual por este backup? As músicas não salvas no backup serão perdidas.',
+            isMerge ? 'Mesclar Backup' : 'Restaurar Backup',
+            isMerge 
+                ? 'Deseja adicionar as músicas e repertórios deste backup à sua biblioteca atual? Músicas com o mesmo ID serão ignoradas.'
+                : 'Deseja substituir sua biblioteca atual por este backup? As músicas não salvas no backup serão perdidas.',
             () => {
                 const reader = new FileReader();
                 reader.onload = (event) => {
                     try {
                         const data = JSON.parse(event.target.result);
-                        if (data.songLibrary) setSongLibrary(data.songLibrary);
-                        if (data.repertoires) setRepertoires(data.repertoires);
-                        if (data.artists) setArtists(data.artists);
-                        if (data.keys) setKeys(data.keys);
-                        if (data.styles) setStyles(data.styles);
-                        setSuccessMsg('Biblioteca restaurada com sucesso!');
+                        
+                        if (isMerge) {
+                            // Lógica de Mesclagem
+                            if (data.songLibrary) {
+                                setSongLibrary(prev => {
+                                    const existingIds = new Set(prev.map(s => s.id));
+                                    const news = data.songLibrary.filter(s => !existingIds.has(s.id));
+                                    return [...prev, ...news];
+                                });
+                            }
+                            if (data.repertoires) {
+                                setRepertoires(prev => {
+                                    const existingIds = new Set(prev.map(r => r.id));
+                                    const news = data.repertoires.filter(r => !existingIds.has(r.id));
+                                    return [...prev, ...news];
+                                });
+                            }
+                            // Metadados simples (strings)
+                            if (data.artists) setArtists(prev => [...new Set([...prev, ...data.artists])]);
+                            if (data.keys) setKeys(prev => [...new Set([...prev, ...data.keys])]);
+                            if (data.styles) setStyles(prev => [...new Set([...prev, ...data.styles])]);
+                            
+                            setSuccessMsg('Backup mesclado com sucesso!');
+                        } else {
+                            // Lógica de Restauração (Substituição)
+                            if (data.songLibrary) setSongLibrary(data.songLibrary);
+                            if (data.repertoires) setRepertoires(data.repertoires);
+                            if (data.artists) setArtists(data.artists);
+                            if (data.keys) setKeys(data.keys);
+                            if (data.styles) setStyles(data.styles);
+                            setSuccessMsg('Biblioteca restaurada com sucesso!');
+                        }
+                        
                         setTimeout(() => setSuccessMsg(''), 3000);
                     } catch (err) {
                         alert('Arquivo de backup inválido.');
@@ -151,9 +183,20 @@ const SettingsModal = () => {
                                 onChange={handleImportBackup} 
                                 className="hidden" 
                             />
-                            <button onClick={() => fileInputRef.current?.click()} className="py-4 px-4 rounded-2xl flex flex-col items-center justify-center gap-2 font-bold text-sm bg-slate-50 hover:bg-emerald-50 text-slate-700 hover:text-emerald-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 dark:hover:text-emerald-400 transition-all border border-slate-200 dark:border-slate-700 border-b-4 active:border-b active:translate-y-[3px]">
-                                <UploadSimple size={24} /> Restaurar (.json)
-                            </button>
+                            <div className="grid grid-cols-1 gap-2">
+                                <button 
+                                    onClick={() => { setImportMode('restore'); setTimeout(() => fileInputRef.current?.click(), 10); }} 
+                                    className="py-2 px-4 rounded-xl flex items-center gap-2 font-bold text-[11px] bg-slate-50 hover:bg-emerald-50 text-slate-700 hover:text-emerald-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 dark:hover:text-emerald-400 transition-all border border-slate-200 dark:border-slate-700 border-b-2 active:border-b active:translate-y-[1px]"
+                                >
+                                    <UploadSimple size={16} /> Restaurar (Substituir)
+                                </button>
+                                <button 
+                                    onClick={() => { setImportMode('merge'); setTimeout(() => fileInputRef.current?.click(), 10); }} 
+                                    className="py-2 px-4 rounded-xl flex items-center gap-2 font-bold text-[11px] bg-emerald-500/5 hover:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 transition-all border border-emerald-500/20 border-b-2 active:border-b active:translate-y-[1px]"
+                                >
+                                    <CheckCircle size={16} /> Mesclar (Adicionar)
+                                </button>
+                            </div>
                         </div>
                     </section>
 

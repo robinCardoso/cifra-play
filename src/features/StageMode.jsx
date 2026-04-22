@@ -486,7 +486,7 @@ const StageMode = ({ onClose }) => {
                     style={{
                         fontSize: `${mobileFontSize}rem`,
                         lineHeight: '1.7',
-                        columnCount: (stageColumnOverride ?? currentSong?.columns ?? columnCount ?? 1),
+                        columnCount: (stageColumnOverride ?? currentSong?.columns ?? (window.innerWidth >= 600 ? 2 : columnCount) ?? 1),
                         columnGap: '2rem',
                         columnFill: 'auto', // Essencial para colunas transbordarem horizontalmente
                         touchAction: 'pan-y',
