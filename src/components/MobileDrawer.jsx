@@ -237,10 +237,6 @@ const MobileDrawer = ({ isOpen, onClose, activeTab, setActiveTab }) => {
           </div>
         )}
 
-        {/* Banner de backup no drawer */}
-        <div className="flex-shrink-0 px-4 pb-2">
-          <BackupBanner compact />
-        </div>
       </div>
     </div>
   );
