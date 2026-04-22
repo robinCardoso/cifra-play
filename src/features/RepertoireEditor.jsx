@@ -74,17 +74,17 @@ const RepertoireEditor = () => {
     };
 
     return (
-        <div className="flex-1 flex flex-col bg-slate-900 border-l border-slate-800 animate-in fade-in h-screen overflow-hidden text-slate-200">
+        <div className="flex-1 flex flex-col bg-slate-900 border-l border-slate-800 animate-in fade-in h-dvh overflow-hidden text-slate-200">
             {/* Top Bar - Header */}
-            <div className="flex-shrink-0 p-6 flex justify-between items-center border-b border-slate-800 bg-slate-900">
-                <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-3">
-                    <h1 className="text-2xl font-bold text-slate-400">Editor:</h1>
-                    <div className="group relative flex items-center">
+            <div className="flex-shrink-0 p-4 md:p-6 flex justify-between items-center border-b border-slate-800 bg-slate-900">
+                <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-3 flex-1 min-w-0">
+                    <h1 className="text-xl md:text-2xl font-bold text-slate-400 flex-shrink-0">Editor:</h1>
+                    <div className="group relative flex items-center flex-1 min-w-0">
                         <input 
                             type="text"
                             value={activeRepertoire.name}
                             onChange={(e) => updateRepertoire(activeRepertoire.id, { name: e.target.value })}
-                            className="text-2xl font-black bg-transparent border-b-2 border-transparent focus:border-emerald-500/50 outline-none text-emerald-400 pr-8 hover:bg-slate-800/50 rounded-t-lg px-2 transition-all w-full md:w-[400px]"
+                            className="text-xl md:text-2xl font-black bg-transparent border-b-2 border-transparent focus:border-emerald-500/50 outline-none text-emerald-400 pr-8 hover:bg-slate-800/50 rounded-t-lg px-2 transition-all w-full"
                             placeholder="Nome do Repertório..."
                             title="Clique para editar o nome"
                         />
@@ -93,21 +93,21 @@ const RepertoireEditor = () => {
                 </div>
                 <button 
                     onClick={() => setActiveRepertoireId(null)}
-                    className="flex items-center gap-2 bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-xl font-bold transition-colors"
+                    className="flex items-center gap-2 bg-red-500 hover:bg-red-600 text-white px-3 md:px-4 py-2 rounded-xl font-bold transition-colors flex-shrink-0 ml-3"
                 >
-                    <X size={16} weight="bold" /> Fechar
+                    <X size={16} weight="bold" /> <span className="hidden sm:inline">Fechar</span>
                 </button>
             </div>
 
             {/* Painéis Secundários */}
-            <div className="flex-1 flex flex-col lg:flex-row overflow-hidden p-6 gap-6 bg-slate-950">
+            <div className="flex-1 flex flex-col lg:flex-row overflow-hidden p-3 md:p-6 gap-3 md:gap-6 bg-slate-950">
                 
                 {/* ------------------------------------------- */}
                 {/* ESQUERDA: Sequência das Músicas (SETLIST) */}
                 {/* ------------------------------------------- */}
-                <div className="flex-1 flex flex-col bg-slate-800 rounded-2xl overflow-hidden border border-slate-700 shadow-xl">
-                    <div className="p-4 border-b border-slate-700 bg-slate-800/80">
-                        <h2 className="text-lg font-bold">Sequência das Músicas ({currentSequence.length})</h2>
+                <div className="flex-1 flex flex-col bg-slate-800 rounded-2xl overflow-hidden border border-slate-700 shadow-xl min-h-[200px] lg:min-h-0">
+                    <div className="p-3 md:p-4 border-b border-slate-700 bg-slate-800/80">
+                        <h2 className="text-base md:text-lg font-bold">Sequência das Músicas ({currentSequence.length})</h2>
                     </div>
                     
                     <div className="flex-1 overflow-y-auto p-4">
@@ -160,7 +160,7 @@ const RepertoireEditor = () => {
                 {/* ------------------------------------------- */}
                 {/* DIREITA: Biblioteca (ESTOQUE) */}
                 {/* ------------------------------------------- */}
-                <div className="flex-1 flex flex-col bg-slate-800 rounded-2xl overflow-hidden border border-slate-700 shadow-xl">
+                <div className="flex-1 flex flex-col bg-slate-800 rounded-2xl overflow-hidden border border-slate-700 shadow-xl min-h-[200px] lg:min-h-0">
                     <div className="p-4 border-b border-slate-700 bg-slate-800/80 flex flex-col gap-3">
                         <h2 className="text-lg font-bold">Minhas Músicas</h2>
                         <div className="flex gap-2">

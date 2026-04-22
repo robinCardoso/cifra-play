@@ -3,6 +3,7 @@
 @tailwind utilities;
 
 @layer base {
+  /* ── Scrollbar desktop ── */
   ::-webkit-scrollbar {
     width: 8px;
   }
@@ -15,5 +16,48 @@
   }
   ::-webkit-scrollbar-thumb:hover {
     background: #64748b;
+  }
+
+  /* ── Mobile: esconder scrollbar fina ── */
+  @media (max-width: 768px) {
+    ::-webkit-scrollbar {
+      width: 3px;
+    }
+  }
+
+  /* ── Eliminação do delay de 300ms no tap ── */
+  * {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* ── Scroll suave no iOS ── */
+  .overflow-y-auto,
+  .overflow-y-scroll {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* ── Previne seleção de texto acidental ao swipe ── */
+  .no-select {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  /* ── Safe area para iPhones com notch ── */
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .safe-top {
+    padding-top: env(safe-area-inset-top);
+  }
+}
+
+@layer utilities {
+  /* ── Altura dinâmica: corrige o bug do vh no mobile (barra de endereços) ── */
+  .h-dvh {
+    height: 100dvh;
+  }
+  .min-h-dvh {
+    min-height: 100dvh;
   }
 }

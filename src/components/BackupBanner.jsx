@@ -9,8 +9,11 @@ import { HardDrive, FolderOpen, X, ArrowRight } from '@phosphor-icons/react';
  * uma pasta de backup automático. Some quando:
  * - O usuário clica em "Configurar agora" e seleciona uma pasta
  * - O usuário dispensa o aviso (fica dispensado só até fechar o app)
+ * 
+ * Props:
+ * - compact: boolean — exibição compacta para uso em drawers mobile
  */
-const BackupBanner = () => {
+const BackupBanner = ({ compact = false }) => {
     const {
         isSupported: backupApiSupported,
         autoBackupEnabled,
@@ -31,6 +34,25 @@ const BackupBanner = () => {
             setIsSettingsModalOpen(true);
         }
     };
+
+    // Versão compacta para mobile drawer
+    if (compact) {
+        return (
+            <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/30 rounded-xl p-2.5">
+                <HardDrive size={14} weight="fill" className="text-amber-400 flex-shrink-0" />
+                <span className="text-[10px] text-amber-300 font-bold flex-1">Backup não configurado</span>
+                <button
+                    onClick={handleConfigure}
+                    className="text-[10px] font-black text-amber-400 bg-amber-500/20 px-2 py-1 rounded-lg"
+                >
+                    Configurar
+                </button>
+                <button onClick={() => setDismissed(true)} className="text-amber-500/50 p-1">
+                    <X size={12} weight="bold" />
+                </button>
+            </div>
+        );
+    }
 
     return (
         <div className="

@@ -1,11 +1,13 @@
 import React from 'react';
 import { useLibrary } from '../store/LibraryContext';
-import { MusicNotes, MonitorPlay, Gear } from '@phosphor-icons/react';
+import { MusicNotes, MonitorPlay, Gear, List } from '@phosphor-icons/react';
 import SongEditor from './SongEditor';
 import RepertoireEditor from './RepertoireEditor';
+import useIsMobile from '../hooks/useIsMobile';
 
 const ManagerView = () => {
     const { activeSongId, activeRepertoireId, setIsSettingsModalOpen, setIsStageMode } = useLibrary();
+    const isMobile = useIsMobile();
 
     if (activeSongId) {
         return <SongEditor />;
@@ -16,14 +18,17 @@ const ManagerView = () => {
     }
 
     return (
-        <div className="flex-1 flex flex-col items-center justify-center p-10 text-center space-y-4">
+        <div className="flex-1 flex flex-col items-center justify-center p-6 md:p-10 text-center space-y-4">
             <div className="w-20 h-20 bg-indigo-500/10 rounded-3xl flex items-center justify-center text-indigo-500">
                 <MusicNotes size={48} weight="duotone" />
             </div>
             <div className="space-y-1">
-                <h2 className="text-2xl font-black tracking-tight">Cifra & Play V2</h2>
+                <h2 className="text-2xl font-black tracking-tight">Cifra & Play</h2>
                 <p className="text-slate-500 max-w-xs text-sm">
-                    Selecione uma música na biblioteca ou carregue um repertório para começar sua performance.
+                    {isMobile
+                        ? 'Toque em Repertórios ou Biblioteca na barra inferior para começar.'
+                        : 'Selecione uma música na biblioteca ou carregue um repertório para começar sua performance.'
+                    }
                 </p>
             </div>
             
