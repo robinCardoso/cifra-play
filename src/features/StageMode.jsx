@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useLibrary } from '../store/LibraryContext';
+import useIsMobile from '../hooks/useIsMobile';
 import { 
   CaretLeft, 
   CaretRight, 
@@ -10,12 +11,16 @@ import {
   ArrowsIn,
   MagnifyingGlass,
   ArrowUUpLeft,
-  MusicNotes
+  MusicNotes,
+  SlidersHorizontal,
+  X,
 } from '@phosphor-icons/react';
 
 const StageMode = ({ onClose }) => {
     const BASE_STAGE_WIDTH = 1920;
     const BASE_STAGE_HEIGHT = 1080;
+
+    const isMobile = useIsMobile();
 
     const { 
         activeRepertoire, 
@@ -53,6 +58,16 @@ const StageMode = ({ onClose }) => {
     const searchInputRef = useRef(null);
     const saveLyricsTimeoutRef = useRef(null);
     const pendingLyricsRef = useRef('');
+
+    // ── Estados Mobile ──
+    const [mobileControlsOpen, setMobileControlsOpen] = useState(false);
+    const [swipeOffset, setSwipeOffset] = useState(0);      // feedback visual do swipe
+    const [isDragging, setIsDragging] = useState(false);    // para cursor e feedback mouse
+    const touchStartX = useRef(null);
+    const touchStartY = useRef(null);
+    const swipeLockedH = useRef(false);
+    const mobileContainerRef = useRef(null);
+
 
     const lyricsViewRef = useRef(null);
     const editorContentRef = useRef(null);
@@ -333,6 +348,225 @@ const StageMode = ({ onClose }) => {
         (s.artist && s.artist.toLowerCase().includes(searchQuery.toLowerCase()))
     ).slice(0, 8); // Limite de visualização rápida
 
+    // ── Touch handlers para swipe mobile ──
+    // touch-action: pan-y no container → browser não captura horizontal → eventos canceláveis
+    const initSwipe = (x, y) => {
+        touchStartX.current = x;
+        touchStartY.current = y;
+        swipeLockedH.current = false;
+    };
+
+    const moveSwipe = (x, y) => {
+        if (touchStartX.current === null) return;
+        const deltaX = x - touchStartX.current;
+        const deltaY = y - touchStartY.current;
+        if (!swipeLockedH.current) {
+            if (Math.abs(deltaX) > Math.abs(deltaY) + 5)  swipeLockedH.current = true;
+            else if (Math.abs(deltaY) > Math.abs(deltaX) + 5) { touchStartX.current = null; return; }
+            else return;
+        }
+
+        // Feedback visual amortecido
+        setSwipeOffset(deltaX * 0.35);
+    };
+
+    const endSwipe = (x, y) => {
+        setSwipeOffset(0);
+        swipeLockedH.current = false;
+
+        if (touchStartX.current === null) return;
+        const deltaX = x - touchStartX.current;
+        const deltaY = y - touchStartY.current;
+        touchStartX.current = null;
+        touchStartY.current = null;
+        if (Math.abs(deltaX) < 35 || Math.abs(deltaY) > Math.abs(deltaX)) return;
+        if (deltaX < 0) handleNext();
+        else            handlePrev();
+    };
+
+    // Touch
+    const handleTouchStart = (e) => initSwipe(e.touches[0].clientX, e.touches[0].clientY);
+    const handleTouchMove = (e) => moveSwipe(e.touches[0].clientX, e.touches[0].clientY);
+    const handleTouchEnd  = (e) => endSwipe(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
+
+    // Mouse (desktop / Chrome DevTools)
+    const handleMouseDown = (e) => { if (e.button !== 0) return; setIsDragging(true); initSwipe(e.clientX, e.clientY); };
+    const handleMouseMove = (e) => { if (!isDragging) return; moveSwipe(e.clientX, e.clientY); };
+    const handleMouseUp   = (e) => { if (!isDragging) return; setIsDragging(false); endSwipe(e.clientX, e.clientY); };
+
+
+    // ────────────────────────────────────────────
+    // LAYOUT MOBILE: fluido, sem canvas 1920px
+    // ────────────────────────────────────────────
+    if (isMobile) {
+        const mobileFontSize = Math.max(0.9, Math.min(fontSize, 2.5));
+        const totalSongs = activeRepertoire?.songIds.length || 1;
+
+        return (
+            <div
+                ref={mobileContainerRef}
+                className="fixed inset-0 z-[220] bg-slate-950 flex flex-col text-white overflow-hidden"
+                style={{ touchAction: 'pan-y', cursor: isDragging ? 'grabbing' : 'grab', userSelect: 'none' }}
+
+                onTouchStart={handleTouchStart}
+                onTouchMove={handleTouchMove}
+                onTouchEnd={handleTouchEnd}
+                onMouseDown={handleMouseDown}
+                onMouseMove={handleMouseMove}
+                onMouseUp={handleMouseUp}
+                onMouseLeave={handleMouseUp}
+            >
+                {/* ── Header Mobile ── */}
+                <header className="flex-shrink-0 bg-slate-900/90 backdrop-blur-md px-4 py-3 flex items-center justify-between border-b border-white/10 safe-top">
+                    <div className="flex flex-col min-w-0 flex-1">
+                        {activeRepertoire && (
+                            <span className="text-indigo-400 text-[10px] font-black uppercase tracking-widest">
+                                {offScriptSong ? '⚡ Fora de Roteiro' : `${currentIndex + 1} / ${totalSongs}`}
+                            </span>
+                        )}
+                        <h2 className="font-black text-lg leading-tight truncate">
+                            {currentSong.title}
+                        </h2>
+                        {currentSong.key && (
+                            <span className="text-indigo-300 text-xs font-bold">Tom: {currentSong.key}</span>
+                        )}
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0 ml-3">
+                        {/* Controles */}
+                        <button
+                            onClick={() => setMobileControlsOpen(v => !v)}
+                            className={`p-2.5 rounded-xl transition-all ${
+                                mobileControlsOpen ? 'bg-indigo-600 text-white' : 'bg-white/10 text-slate-400'
+                            }`}
+                        >
+                            <SlidersHorizontal size={20} weight="bold" />
+                        </button>
+                        <button
+                            onClick={onClose}
+                            className="p-2.5 bg-red-500/20 text-red-400 rounded-xl border border-red-500/20"
+                        >
+                            <X size={20} weight="bold" />
+                        </button>
+                    </div>
+                </header>
+
+                {/* ── Painel de controles (bottom sheet) ── */}
+                {mobileControlsOpen && (
+                    <div className="flex-shrink-0 bg-slate-900 border-b border-white/10 px-4 py-3 flex items-center gap-3 flex-wrap">
+                        {/* Fonte */}
+                        <div className="flex items-center gap-1 bg-white/5 rounded-xl p-1">
+                            <button onClick={() => setFontSize(p => Math.max(0.8, p - 0.2))} className="p-2 hover:bg-white/10 rounded-lg"><TextT size={16} /></button>
+                            <span className="text-xs font-bold px-1 text-slate-400">{fontSize.toFixed(1)}x</span>
+                            <button onClick={() => setFontSize(p => Math.min(4, p + 0.2))} className="p-2 hover:bg-white/10 rounded-lg"><TextT size={20} weight="bold" /></button>
+                        </div>
+                        {/* Colunas */}
+                        <button
+                            onClick={() => setStageColumnOverride(stageColumnOverride === 2 ? 1 : 2)}
+                            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all ${
+                                (stageColumnOverride ?? currentSong?.columns ?? columnCount ?? 1) === 2
+                                    ? 'bg-indigo-600 text-white' : 'bg-white/10 text-slate-300'
+                            }`}
+                        >
+                            <Columns size={16} /> 2 Colunas
+                        </button>
+                        {/* Tela cheia */}
+                        <button
+                            onClick={toggleFullscreen}
+                            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-white/10 text-slate-300"
+                        >
+                            <ArrowsOut size={16} /> Tela Cheia
+                        </button>
+                    </div>
+                )}
+
+                {/* ── Área de letra — Paginação horizontal (swipe) ── */}
+                <main
+                    ref={lyricsViewRef}
+                    className="flex-1 overflow-x-hidden overflow-y-hidden px-6 py-6"
+                    style={{
+                        fontSize: `${mobileFontSize}rem`,
+                        lineHeight: '1.7',
+                        columnCount: (stageColumnOverride ?? currentSong?.columns ?? columnCount ?? 1),
+                        columnGap: '2rem',
+                        columnFill: 'auto', // Essencial para colunas transbordarem horizontalmente
+                        touchAction: 'pan-y',
+                        transform: `translateX(${swipeOffset}px)`,
+                        transition: swipeOffset === 0 ? 'transform 0.3s ease-out' : 'none',
+                    }}
+                >
+                    {formatLyrics(currentSong.lyrics)}
+                </main>
+
+
+                {/* ── Footer Mobile: navegação e indicador ── */}
+                <footer className="flex-shrink-0 bg-slate-900/80 backdrop-blur-md px-4 py-3 safe-bottom">
+                    {/* Próxima música */}
+                    {nextSong && !offScriptSong && (
+                        <p className="text-center text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-2">
+                            A seguir: {nextSong.title}
+                        </p>
+                    )}
+                    <div className="flex items-center gap-3">
+                        <button
+                            onClick={handlePrev}
+                            disabled={currentIndex === 0 && !offScriptSong}
+                            className="flex-1 flex items-center justify-center gap-2 py-3 bg-white/10 hover:bg-white/20 rounded-2xl font-bold text-sm disabled:opacity-30 transition-all active:scale-95"
+                        >
+                            <CaretLeft size={20} weight="bold" />
+                            Anterior
+                        </button>
+
+                        {/* Indicador de posição */}
+                        <div className="flex flex-col items-center gap-1.5">
+                            {/* Indicador de PÁGINA (dentro da música) */}
+                            {totalPages > 1 && (
+                                <span className="text-[10px] text-indigo-400 font-black uppercase tracking-wider bg-indigo-500/10 px-2 py-0.5 rounded-full">
+                                    Pág {currentPage + 1}/{totalPages}
+                                </span>
+                            )}
+                            
+                            <div className="flex gap-1">
+                                {Array.from({ length: Math.min(totalSongs, 7) }).map((_, i) => (
+                                    <div
+                                        key={i}
+                                        className={`rounded-full transition-all duration-300 ${
+                                            i === currentIndex
+                                                ? 'w-4 h-1.5 bg-indigo-500'
+                                                : 'w-1.5 h-1.5 bg-white/20'
+                                        }`}
+                                    />
+                                ))}
+                                {totalSongs > 7 && <span className="text-[9px] text-slate-500 self-end">...</span>}
+                            </div>
+                            <span className="text-[9px] text-slate-500 font-bold tracking-widest">
+                                MÚSICA {currentIndex + 1}/{totalSongs}
+                            </span>
+                        </div>
+
+                        <button
+                            onClick={handleNext}
+                            disabled={currentIndex === totalSongs - 1 && !offScriptSong}
+                            className="flex-1 flex items-center justify-center gap-2 py-3 bg-indigo-600 hover:bg-indigo-500 rounded-2xl font-bold text-sm disabled:opacity-30 transition-all active:scale-95"
+                        >
+                            Próxima
+                            <CaretRight size={20} weight="bold" />
+                        </button>
+                    </div>
+                </footer>
+
+                {/* Estilos cifra */}
+                <style dangerouslySetInnerHTML={{ __html: `
+                    .lyric-stanza { margin-bottom: 1.6em; }
+                    .lyric-line { display: block; line-height: 1.7; min-height: 1.7em; white-space: pre-wrap; word-break: break-word; }
+                    .chord { color: #4ade80; font-weight: 700; }
+                `}} />
+            </div>
+        );
+    }
+
+    // ────────────────────────────────────────────
+    // LAYOUT DESKTOP: canvas 1920×1080 (original)
+    // ────────────────────────────────────────────
     return (
         <div className="fixed inset-0 z-[220] bg-slate-950 overflow-hidden">
             <div
