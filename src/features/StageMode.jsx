@@ -131,6 +131,8 @@ const StageMode = ({ onClose }) => {
     // 2) Preferência da música
     // 3) Configuração global
     const activeCols = stageColumnOverride ?? currentSong?.columns ?? columnCount ?? 1;
+    // Mobile: telas estreitas não exibem 2 colunas (a preferência 2 col. vale no desktop/ensaio).
+    const effectiveCols = isMobile ? 1 : activeCols;
 
     // Sincroniza o contenteditable com o texto da música quando o modo Editor abre
     useEffect(() => {
@@ -216,7 +218,7 @@ const StageMode = ({ onClose }) => {
         });
 
         return () => cancelAnimationFrame(rafId);
-    }, [resolvedSongId, fontSize, activeCols, activeRepertoire, currentSong?.lyrics, isEditing, stageScale, editLayoutTick]);
+    }, [resolvedSongId, fontSize, effectiveCols, activeRepertoire, currentSong?.lyrics, isEditing, stageScale, editLayoutTick]);
 
     const scrollToPage = (page) => {
         if (lyricsViewRef.current) {
@@ -329,7 +331,7 @@ const StageMode = ({ onClose }) => {
         if (!lyricsViewRef.current) return;
         const el = lyricsViewRef.current;
         snapToPage(el, currentPage, totalPages);
-    }, [currentPage, totalPages, activeCols, resolvedSongId, isEditing]);
+    }, [currentPage, totalPages, effectiveCols, resolvedSongId, isEditing]);
 
     // Foco automático na busca quando abrir
     useEffect(() => {
@@ -399,8 +401,18 @@ const StageMode = ({ onClose }) => {
     // LAYOUT MOBILE: fluido, sem canvas 1920px
     // ────────────────────────────────────────────
     if (isMobile) {
-        const mobileFontSize = Math.max(0.9, Math.min(fontSize, 2.5));
+        // O `fontSize` global (rem) calibra o palco 16:9; no mobile mapeamos para rem legíveis na largura ~360px.
+        // Faixa calibrada para ~2 estrofes típicas na altura útil (equivalente ao “2 blocos” do desktop em 2 colunas).
+        const MOBILE_FONT_LO = 0.88;
+        const MOBILE_FONT_HI = 1.28;
+        const MOBILE_LH = 1.55;
+        const STAGE_F_MIN = 0.8;
+        const STAGE_F_MAX = 4;
+        const t = Math.min(1, Math.max(0, (fontSize - STAGE_F_MIN) / (STAGE_F_MAX - STAGE_F_MIN)));
+        const mobileFontSize = MOBILE_FONT_LO + t * (MOBILE_FONT_HI - MOBILE_FONT_LO);
         const totalSongs = activeRepertoire?.songIds.length || 1;
+        // Com o menu do app oculto no palco, só respiro leve + safe area (o rodapé do palco tem os botões)
+        const mobileLyricsPadBottom = 'max(1.25rem, env(safe-area-inset-bottom, 0px))';
 
         return (
             <div
@@ -417,14 +429,14 @@ const StageMode = ({ onClose }) => {
                 onMouseLeave={handleMouseUp}
             >
                 {/* ── Header Mobile ── */}
-                <header className="flex-shrink-0 bg-slate-900/90 backdrop-blur-md px-4 py-3 flex items-center justify-between border-b border-white/10 safe-top">
+                <header className="flex-shrink-0 bg-slate-900/90 backdrop-blur-md px-3 py-2.5 flex items-center justify-between border-b border-white/10 safe-top">
                     <div className="flex flex-col min-w-0 flex-1">
                         {activeRepertoire && (
                             <span className="text-indigo-400 text-[10px] font-black uppercase tracking-widest">
                                 {offScriptSong ? '⚡ Fora de Roteiro' : `${currentIndex + 1} / ${totalSongs}`}
                             </span>
                         )}
-                        <h2 className="font-black text-lg leading-tight truncate">
+                        <h2 className="font-black text-base leading-tight truncate">
                             {currentSong.title}
                         </h2>
                         {currentSong.key && (
@@ -459,15 +471,24 @@ const StageMode = ({ onClose }) => {
                             <span className="text-xs font-bold px-1 text-slate-400">{fontSize.toFixed(1)}x</span>
                             <button onClick={() => setFontSize(p => Math.min(4, p + 0.2))} className="p-2 hover:bg-white/10 rounded-lg"><TextT size={20} weight="bold" /></button>
                         </div>
-                        {/* Colunas */}
-                        <button
-                            onClick={() => setStageColumnOverride(stageColumnOverride === 2 ? 1 : 2)}
-                            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all ${
-                                (stageColumnOverride ?? currentSong?.columns ?? columnCount ?? 1) === 2
-                                    ? 'bg-indigo-600 text-white' : 'bg-white/10 text-slate-300'
-                            }`}
+                        {/* 2 colunas só no palco largo; no celular é sempre 1 (legível) */}
+                        <div
+                            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-slate-500 border border-white/10"
+                            title="No celular a letra usa uma coluna. No desktop, use o botão de colunas do palco."
                         >
-                            <Columns size={16} /> 2 Colunas
+                            <Columns size={16} /> 1 col.
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setKeepStanzaTogether((v) => !v)}
+                            className={`px-3 py-2 rounded-xl text-xs font-black uppercase tracking-widest border transition-all ${
+                                keepStanzaTogether
+                                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400/40'
+                                    : 'bg-white/5 text-slate-400 border-white/10'
+                            }`}
+                            title="Evitar estrofes cortadas entre páginas (evitar sobras de uma linha)"
+                        >
+                            Estrofes
                         </button>
                         {/* Tela cheia */}
                         <button
@@ -482,13 +503,14 @@ const StageMode = ({ onClose }) => {
                 {/* ── Área de letra — Paginação horizontal (swipe) ── */}
                 <main
                     ref={lyricsViewRef}
-                    className="flex-1 overflow-x-hidden overflow-y-hidden px-6 py-6"
+                    className="flex-1 overflow-x-hidden overflow-y-hidden px-4 pt-4"
                     style={{
                         fontSize: `${mobileFontSize}rem`,
-                        lineHeight: '1.7',
-                        columnCount: (stageColumnOverride ?? currentSong?.columns ?? (window.innerWidth >= 600 ? 2 : columnCount) ?? 1),
+                        lineHeight: String(MOBILE_LH),
+                        columnCount: effectiveCols,
                         columnGap: '2rem',
                         columnFill: 'auto', // Essencial para colunas transbordarem horizontalmente
+                        paddingBottom: mobileLyricsPadBottom,
                         touchAction: 'pan-y',
                         transform: `translateX(${swipeOffset}px)`,
                         transition: swipeOffset === 0 ? 'transform 0.3s ease-out' : 'none',
@@ -499,7 +521,7 @@ const StageMode = ({ onClose }) => {
 
 
                 {/* ── Footer Mobile: navegação e indicador ── */}
-                <footer className="flex-shrink-0 bg-slate-900/80 backdrop-blur-md px-4 py-3 safe-bottom">
+                <footer className="flex-shrink-0 bg-slate-900/80 backdrop-blur-md px-3 py-2.5 safe-bottom">
                     {/* Próxima música */}
                     {nextSong && !offScriptSong && (
                         <p className="text-center text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-2">
@@ -554,11 +576,17 @@ const StageMode = ({ onClose }) => {
                     </div>
                 </footer>
 
-                {/* Estilos cifra */}
+                {/* Mesmas regras de estrofes do desktop: evita “sobra” de uma linha no limite do fragmento coluna/página */}
                 <style dangerouslySetInnerHTML={{ __html: `
-                    .lyric-stanza { margin-bottom: 1.6em; }
-                    .lyric-line { display: block; line-height: 1.7; min-height: 1.7em; white-space: pre-wrap; word-break: break-word; }
+                    .lyric-stanza { margin-bottom: 1.22em; position: relative; }
+                    .keep-stanza-together {
+                        -webkit-column-break-inside: avoid;
+                        break-inside: avoid;
+                        page-break-inside: avoid;
+                    }
+                    .lyric-line { display: block; line-height: ${MOBILE_LH}; min-height: 1.5em; white-space: pre-wrap; word-break: break-word; }
                     .chord { color: #4ade80; font-weight: 700; }
+                    main { column-fill: auto; }
                 `}} />
             </div>
         );
@@ -730,9 +758,9 @@ const StageMode = ({ onClose }) => {
                             paddingRight: '64px',
                             transform: `translateX(-${pageVisualOffset}px)`,
                             fontSize: `${fontSize}rem`,
-                            columnCount: activeCols,
+                            columnCount: effectiveCols,
                             columnGap: '64px',
-                            columnWidth: activeCols === 1 ? '100%' : 'auto',
+                            columnWidth: effectiveCols === 1 ? '100%' : 'auto',
                             columnFill: 'auto',
                             whiteSpace: 'pre-wrap',
                             wordBreak: 'break-word',
@@ -756,9 +784,9 @@ const StageMode = ({ onClose }) => {
                         paddingBottom: '2rem',
                         fontSize: `${fontSize}rem`,
                         lineHeight: '1.6',
-                        columnCount: activeCols,
+                        columnCount: effectiveCols,
                         columnGap: '64px',
-                        columnWidth: activeCols === 1 ? '100%' : 'auto',
+                        columnWidth: effectiveCols === 1 ? '100%' : 'auto',
                         columnFill: 'auto',
                         whiteSpace: 'pre-wrap',
                         wordBreak: 'break-word',

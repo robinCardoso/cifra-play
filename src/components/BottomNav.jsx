@@ -12,7 +12,7 @@ import {
 /**
  * Barra de navegação inferior para mobile com menu de ação rápida.
  */
-const BottomNav = ({ activeTab, setActiveTab, onDrawerOpen }) => {
+const BottomNav = ({ activeTab, setActiveTab, onDrawerOpen, onCloseDrawer }) => {
   const { 
     addSong, 
     addRepertoire, 
@@ -106,6 +106,7 @@ const BottomNav = ({ activeTab, setActiveTab, onDrawerOpen }) => {
             <button
               key={id}
               onClick={() => {
+                setIsAddMenuOpen(false);
                 setActiveTab(id);
                 onDrawerOpen();
               }}
@@ -140,7 +141,10 @@ const BottomNav = ({ activeTab, setActiveTab, onDrawerOpen }) => {
 
         {/* Botão Adicionar (Toggle) */}
         <button
-          onClick={() => setIsAddMenuOpen(!isAddMenuOpen)}
+          onClick={() => {
+            if (!isAddMenuOpen) onCloseDrawer?.();
+            setIsAddMenuOpen(!isAddMenuOpen);
+          }}
           className={`flex-1 flex flex-col items-center justify-center h-full transition-all ${
             isAddMenuOpen ? 'text-emerald-500' : 'text-emerald-500'
           }`}
