@@ -13,8 +13,6 @@ import {
   MusicNote,
   X,
 } from '@phosphor-icons/react';
-import BackupBanner from './BackupBanner';
-
 /**
  * Drawer deslizante de baixo para cima — exibe Repertórios ou Biblioteca.
  * Usado apenas no mobile como substituto da Sidebar.
@@ -54,15 +52,18 @@ const MobileDrawer = ({ isOpen, onClose, activeTab, setActiveTab }) => {
 
   if (!isOpen) return null;
 
+  // h-16 da BottomNav + safe-area (não edite o BottomNav; só espelha a altura reservada)
+  const bottomNavReserve = 'calc(4rem + env(safe-area-inset-bottom, 0px))';
+
   return (
     <div
       ref={overlayRef}
       onClick={handleOverlayClick}
-      className="fixed inset-0 z-[150] bg-black/50 backdrop-blur-sm flex flex-col justify-end"
+      className="fixed top-0 left-0 right-0 z-[400] flex flex-col justify-end bg-black/50 backdrop-blur-sm"
+      style={{ bottom: bottomNavReserve }}
     >
-      {/* Painel deslizante */}
-      <div className="bg-white dark:bg-slate-950 rounded-t-3xl flex flex-col overflow-hidden animate-in slide-in-from-bottom duration-300"
-        style={{ maxHeight: '82dvh' }}
+      <div
+        className="bg-white dark:bg-slate-950 rounded-t-3xl flex flex-col min-h-0 w-full max-h-[min(88dvh,100%)] overflow-hidden animate-in slide-in-from-bottom duration-300"
       >
         {/* Handle de arraste */}
         <div className="flex-shrink-0 flex justify-center pt-3 pb-1">

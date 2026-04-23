@@ -4,8 +4,10 @@ import BottomNav from './BottomNav';
 import MobileDrawer from './MobileDrawer';
 import useIsMobile from '../hooks/useIsMobile';
 import BackupBanner from './BackupBanner';
+import { useLibrary } from '../store/LibraryContext';
 
 const Layout = ({ children }) => {
+  const { isStageMode } = useLibrary();
   const isMobile = useIsMobile();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('repertoires');
@@ -21,18 +23,18 @@ const Layout = ({ children }) => {
         {children}
       </main>
 
-      {/* ── Mobile: Barra inferior + Drawer ── */}
-      {isMobile && (
+      {/* ── Mobile: Barra inferior + Drawer (ocultos no modo palco — tela cheia da letra) */}
+      {isMobile && !isStageMode && (
         <>
-          {/* Alerta de Backup Mobile (Flutuante acima da Nav) */}
           <div className="px-4 pb-2">
             <BackupBanner compact />
           </div>
-          
+
           <BottomNav
             activeTab={activeTab}
             setActiveTab={setActiveTab}
             onDrawerOpen={() => setDrawerOpen(true)}
+            onCloseDrawer={() => setDrawerOpen(false)}
           />
           <MobileDrawer
             isOpen={drawerOpen}
