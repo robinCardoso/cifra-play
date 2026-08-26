@@ -26,24 +26,33 @@ const updateSW = registerSW({
 })
 
 window.onerror = function(message, source, lineno, colno, error) {
-  document.body.innerHTML = `
-    <div style="padding: 20px; color: red; font-family: monospace; z-index: 9999; position: relative;">
-      <h2>Erro Fatal:</h2>
-      <p>${message}</p>
-      <p>Source: ${source}:${lineno}:${colno}</p>
-      <pre>${error?.stack}</pre>
-    </div>
+  const errorDiv = document.createElement('div');
+  errorDiv.style.cssText = "padding: 20px; color: red; background: rgba(0,0,0,0.9); font-family: monospace; z-index: 9999; position: fixed; top: 0; left: 0; right: 0; bottom: 0; overflow: auto;";
+  errorDiv.innerHTML = `
+    <h2>Erro Fatal:</h2>
+    <p>${message}</p>
+    <p>Source: ${source}:${lineno}:${colno}</p>
+    <pre>${error?.stack}</pre>
+    <button onclick="this.parentElement.remove()" style="margin-top: 10px; padding: 5px 10px; color: black;">Fechar</button>
   `;
+  document.body.appendChild(errorDiv);
 };
 
 window.addEventListener('unhandledrejection', function(event) {
-  document.body.innerHTML = `
-    <div style="padding: 20px; color: red; font-family: monospace; z-index: 9999; position: relative;">
-      <h2>Promise Rejeitada:</h2>
-      <p>${event.reason}</p>
-      <pre>${event.reason?.stack}</pre>
-    </div>
+  if (event.reason && String(event.reason).includes('ServiceWorker')) {
+    console.warn('Erro no Service Worker (normal em dev):', event.reason);
+    return;
+  }
+
+  const errorDiv = document.createElement('div');
+  errorDiv.style.cssText = "padding: 20px; color: red; background: rgba(0,0,0,0.9); font-family: monospace; z-index: 9999; position: fixed; top: 0; left: 0; right: 0; bottom: 0; overflow: auto;";
+  errorDiv.innerHTML = `
+    <h2>Promise Rejeitada:</h2>
+    <p>${event.reason}</p>
+    <pre>${event.reason?.stack}</pre>
+    <button onclick="this.parentElement.remove()" style="margin-top: 10px; padding: 5px 10px; color: black;">Fechar</button>
   `;
+  document.body.appendChild(errorDiv);
 });
 
 ReactDOM.createRoot(document.getElementById('root')).render(
