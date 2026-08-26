@@ -113,14 +113,16 @@ const StageMode = ({ onClose }) => {
     useEffect(() => {
         const updateStageScale = () => {
             const widthRatio = window.innerWidth / BASE_STAGE_WIDTH;
-            const heightRatio = window.innerHeight / BASE_STAGE_HEIGHT;
+            // Desconta a altura do header (aprox 104px)
+            const availableHeight = isMobile ? window.innerHeight : (window.innerHeight - 104);
+            const heightRatio = availableHeight / BASE_STAGE_HEIGHT;
             setStageScale(Math.max(0.2, Math.min(widthRatio, heightRatio)));
         };
 
         updateStageScale();
         window.addEventListener('resize', updateStageScale);
         return () => window.removeEventListener('resize', updateStageScale);
-    }, []);
+    }, [isMobile]);
     const resolvedSongId = activeRepertoire?.songIds[currentIndex] || activeSongId;
     const currentSong = offScriptSong || songLibrary.find(s => s.id === resolvedSongId);
     const nextSongId = activeRepertoire?.songIds[currentIndex + 1];
@@ -596,20 +598,10 @@ const StageMode = ({ onClose }) => {
     // LAYOUT DESKTOP: canvas 1920×1080 (original)
     // ────────────────────────────────────────────
     return (
-        <div className="fixed inset-0 z-[220] bg-slate-950 overflow-hidden">
-            <div
-                className="absolute left-1/2 top-1/2 text-white font-sans animate-in fade-in duration-300"
-                style={{
-                    width: `${BASE_STAGE_WIDTH}px`,
-                    height: `${BASE_STAGE_HEIGHT}px`,
-                    transform: `translate(-50%, -50%) scale(${stageScale})`,
-                    transformOrigin: 'center center',
-                }}
-            >
-        <div className="w-full h-full flex flex-col">
+        <div className="fixed inset-0 z-[220] bg-slate-950 overflow-hidden flex flex-col text-white">
             
             {/* Header de Controle do Palco */}
-            <header className="flex-shrink-0 min-h-[104px] bg-slate-900/80 backdrop-blur-md px-6 py-4 flex items-center justify-between border-b border-white/5 relative z-10">
+            <header className="flex-shrink-0 min-h-[104px] bg-slate-900/80 backdrop-blur-md px-6 py-4 flex items-center justify-between border-b border-white/5 relative z-10 w-full">
                 <div className="flex items-center gap-4">
                     <div className="flex flex-col">
                         {offScriptSong ? (
@@ -731,6 +723,19 @@ const StageMode = ({ onClose }) => {
                     </button>
                 </div>
             </header>
+
+            {/* Container do Palco (Área restante) */}
+            <div className="flex-1 relative overflow-hidden">
+                <div
+                    className="absolute left-1/2 top-1/2 font-sans animate-in fade-in duration-300"
+                    style={{
+                        width: `${BASE_STAGE_WIDTH}px`,
+                        height: `${BASE_STAGE_HEIGHT}px`,
+                        transform: `translate(-50%, -50%) scale(${stageScale})`,
+                        transformOrigin: 'center center',
+                    }}
+                >
+                    <div className="w-full h-full flex flex-col">
 
             {/* Modo Edição: mesmo layout do palco mas com contentEditable */}
             {isEditing ? (
@@ -910,8 +915,9 @@ const StageMode = ({ onClose }) => {
                     column-fill: auto;
                 }
             `}} />
-        </div>
-        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     );
 };
