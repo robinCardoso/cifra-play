@@ -8,7 +8,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
+      includeAssets: ['pwa-192x192.svg', 'pwa-512x512.svg'],
       manifest: {
         name: 'Cifra & Play',
         short_name: 'CifraPlay',
