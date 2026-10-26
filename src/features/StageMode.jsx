@@ -16,6 +16,75 @@ import {
   X,
 } from '@phosphor-icons/react';
 
+function parseLyrics(text) {
+    if (!text || !String(text).trim()) return [['']];
+    return String(text).split(/\n\s*\n/).map((stanza) => stanza.split('\n'));
+}
+
+function serializeLyrics(stanzas) {
+    if (!stanzas?.length) return '';
+    return stanzas.map((s) => s.join('\n')).join('\n\n');
+}
+
+function setLineInLyrics(lyrics, stanzaIndex, lineIndex, lineText) {
+    const stanzas = parseLyrics(lyrics);
+    if (!stanzas[stanzaIndex]) return lyrics;
+    stanzas[stanzaIndex] = [...stanzas[stanzaIndex]];
+    stanzas[stanzaIndex][lineIndex] = lineText;
+    return serializeLyrics(stanzas);
+}
+
+function insertLineAfterInLyrics(lyrics, stanzaIndex, lineIndex, text = '') {
+    const stanzas = parseLyrics(lyrics);
+    if (!stanzas[stanzaIndex]) return lyrics;
+    stanzas[stanzaIndex] = [...stanzas[stanzaIndex]];
+    stanzas[stanzaIndex].splice(lineIndex + 1, 0, text);
+    return serializeLyrics(stanzas);
+}
+
+function insertStanzaAfterInLyrics(lyrics, stanzaIndex) {
+    const stanzas = parseLyrics(lyrics);
+    stanzas.splice(stanzaIndex + 1, 0, ['']);
+    return serializeLyrics(stanzas);
+}
+
+function EditableLyricLine({ stanzaIndex, lineIndex, line, onCommit, onRequestNewLine, onRequestNewStanza }) {
+    const ref = useRef(null);
+
+    useEffect(() => {
+        const el = ref.current;
+        if (!el || document.activeElement === el) return;
+        const next = line === '' ? '' : line;
+        if (el.innerText !== next) el.innerText = next;
+    }, [line, stanzaIndex, lineIndex]);
+
+    return (
+        <div
+            ref={ref}
+            contentEditable
+            suppressContentEditableWarning
+            data-stanza={stanzaIndex}
+            data-line={lineIndex}
+            className="lyric-line outline-none rounded-sm focus:ring-1 focus:ring-amber-500/40 caret-amber-400 selection:bg-amber-500/30"
+            onInput={(e) => {
+                const text = e.currentTarget.innerText.replace(/\r\n/g, '\n').replace(/\n/g, '');
+                onCommit(stanzaIndex, lineIndex, text);
+            }}
+            onKeyDown={(e) => {
+                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                    e.preventDefault();
+                    onRequestNewStanza(stanzaIndex);
+                    return;
+                }
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    onRequestNewLine(stanzaIndex, lineIndex);
+                }
+            }}
+        />
+    );
+}
+
 const StageMode = ({ onClose }) => {
     const BASE_STAGE_WIDTH = 1920;
     const BASE_STAGE_HEIGHT = 1080;
@@ -32,6 +101,7 @@ const StageMode = ({ onClose }) => {
     } = useLibrary();
 
     const [isEditing, setIsEditing] = useState(false);
+    const [editLyrics, setEditLyrics] = useState('');
     const [currentIndex, setCurrentIndex] = useState(() => {
         if (activeSongId && activeRepertoire) {
             const index = activeRepertoire.songIds.indexOf(activeSongId);
@@ -70,11 +140,9 @@ const StageMode = ({ onClose }) => {
 
 
     const lyricsViewRef = useRef(null);
-    const editorContentRef = useRef(null);
 
     const getPaginationMetrics = (el) => {
-        const metricsSource = isEditing && editorContentRef.current ? editorContentRef.current : el;
-        const style = window.getComputedStyle(metricsSource);
+        const style = window.getComputedStyle(el);
         const padL = parseFloat(style.paddingLeft) || 0;
         const padR = parseFloat(style.paddingRight) || 0;
         const gap = parseFloat(style.columnGap) || 64;
@@ -82,20 +150,17 @@ const StageMode = ({ onClose }) => {
         // Em CSS multi-column, a próxima "página" começa após 1 bloco visível de colunas:
         // largura útil + gap. Usar clientWidth puro causa drift entre páginas.
         const step = Math.max(1, Math.round(contentWidth + gap));
-        const maxScrollLeft = Math.max(0, metricsSource.scrollWidth - el.clientWidth);
-        return { step, maxScrollLeft, padL, padR, gap, sourceWidth: metricsSource.scrollWidth };
+        const maxScrollLeft = Math.max(0, el.scrollWidth - el.clientWidth);
+        return { step, maxScrollLeft, padL, padR, gap, sourceWidth: el.scrollWidth };
     };
 
     const snapToPage = (el, page, total) => {
-        const { step, maxScrollLeft, padL, padR, gap, sourceWidth } = getPaginationMetrics(el);
+        const { step, maxScrollLeft } = getPaginationMetrics(el);
         const safePage = Math.max(0, Math.min(page, Math.max(0, total - 1)));
         const virtualTargetLeft = safePage * step;
-        const targetLeft = isEditing ? 0 : Math.min(virtualTargetLeft, maxScrollLeft);
-        const visualOffset = isEditing
-            ? virtualTargetLeft
-            : Math.max(0, virtualTargetLeft - targetLeft);
-        const scrollHost = el;
-        scrollHost.scrollTo({ left: targetLeft, behavior: 'auto' });
+        const targetLeft = Math.min(virtualTargetLeft, maxScrollLeft);
+        const visualOffset = Math.max(0, virtualTargetLeft - targetLeft);
+        el.scrollTo({ left: targetLeft, behavior: 'auto' });
         setPageVisualOffset(visualOffset);
         setDebugMetrics({ scrollLeft: targetLeft, step, maxScrollLeft });
         return safePage;
@@ -136,21 +201,94 @@ const StageMode = ({ onClose }) => {
     // Mobile: telas estreitas não exibem 2 colunas (a preferência 2 col. vale no desktop/ensaio).
     const effectiveCols = isMobile ? 1 : activeCols;
 
-    // Sincroniza o contenteditable com o texto da música quando o modo Editor abre
-    useEffect(() => {
-        if (isEditing && editorContentRef.current && currentSong) {
-            const el = editorContentRef.current;
-            if (el.innerText !== (currentSong.lyrics || '')) {
-                el.innerText = currentSong.lyrics || '';
-            }
-            pendingLyricsRef.current = currentSong.lyrics || '';
+    const displayLyrics = isEditing ? editLyrics : (currentSong?.lyrics ?? '');
+
+    const saveLyricsDebounced = (songId, lyrics) => {
+        pendingLyricsRef.current = lyrics;
+        if (saveLyricsTimeoutRef.current) {
+            clearTimeout(saveLyricsTimeoutRef.current);
         }
+        saveLyricsTimeoutRef.current = setTimeout(() => {
+            updateSong(songId, { lyrics: pendingLyricsRef.current });
+            saveLyricsTimeoutRef.current = null;
+        }, 250);
+    };
+
+    const flushPendingLyrics = (songId) => {
+        if (!songId) return;
+        if (saveLyricsTimeoutRef.current) {
+            clearTimeout(saveLyricsTimeoutRef.current);
+            saveLyricsTimeoutRef.current = null;
+        }
+        if (typeof pendingLyricsRef.current === 'string') {
+            updateSong(songId, { lyrics: pendingLyricsRef.current });
+        }
+    };
+
+    const focusLyricLine = (stanzaIndex, lineIndex) => {
+        requestAnimationFrame(() => {
+            const el = lyricsViewRef.current?.querySelector(
+                `[data-stanza="${stanzaIndex}"][data-line="${lineIndex}"]`
+            );
+            if (el) {
+                el.focus();
+                const range = document.createRange();
+                range.selectNodeContents(el);
+                range.collapse(false);
+                const sel = window.getSelection();
+                sel?.removeAllRanges();
+                sel?.addRange(range);
+            }
+        });
+    };
+
+    const pushEditLyrics = (getNext) => {
+        setEditLyrics((prev) => {
+            const next = typeof getNext === 'function' ? getNext(prev) : getNext;
+            pendingLyricsRef.current = next;
+            if (currentSong?.id) saveLyricsDebounced(currentSong.id, next);
+            setEditLayoutTick((t) => t + 1);
+            return next;
+        });
+    };
+
+    const handleLineCommit = (stanzaIndex, lineIndex, text) => {
+        pushEditLyrics((prev) => setLineInLyrics(prev, stanzaIndex, lineIndex, text));
+    };
+
+    const handleRequestNewLine = (stanzaIndex, lineIndex) => {
+        pushEditLyrics((prev) => insertLineAfterInLyrics(prev, stanzaIndex, lineIndex, ''));
+        focusLyricLine(stanzaIndex, lineIndex + 1);
+    };
+
+    const handleRequestNewStanza = (stanzaIndex) => {
+        pushEditLyrics((prev) => insertStanzaAfterInLyrics(prev, stanzaIndex));
+        focusLyricLine(stanzaIndex + 1, 0);
+    };
+
+    const enterEditMode = () => {
+        const lyrics = currentSong?.lyrics || '';
+        setEditLyrics(lyrics);
+        pendingLyricsRef.current = lyrics;
+        setIsEditing(true);
+    };
+
+    const exitEditMode = () => {
+        flushPendingLyrics(currentSong?.id);
+        setIsEditing(false);
+    };
+
+    useEffect(() => {
+        if (!isEditing) return;
+        const lyrics = currentSong?.lyrics || '';
+        setEditLyrics(lyrics);
+        pendingLyricsRef.current = lyrics;
     }, [isEditing, resolvedSongId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // Formatação de cifras para exibição
-    const formatLyrics = (text) => {
-        if (!text) return null;
-        const stanzas = text.split(/\n\s*\n/);
+    // Mesma árvore DOM no palco e na edição (estrofes, linhas, estrofes juntas)
+    const formatLyrics = (text, editable = false) => {
+        if (!text && !editable) return null;
+        const stanzas = text ? text.split(/\n\s*\n/) : [''];
 
         return stanzas.map((stanza, stanzaIndex) => {
             const lines = stanza.split('\n');
@@ -160,6 +298,19 @@ const StageMode = ({ onClose }) => {
                     className={`lyric-stanza ${keepStanzaTogether ? 'keep-stanza-together' : ''}`}
                 >
                     {lines.map((line, lineIndex) => {
+                        if (editable) {
+                            return (
+                                <EditableLyricLine
+                                    key={`${stanzaIndex}-${lineIndex}`}
+                                    stanzaIndex={stanzaIndex}
+                                    lineIndex={lineIndex}
+                                    line={line}
+                                    onCommit={handleLineCommit}
+                                    onRequestNewLine={handleRequestNewLine}
+                                    onRequestNewStanza={handleRequestNewStanza}
+                                />
+                            );
+                        }
                         const parts = line.split(/(\[[^\]]+\])/g);
                         return (
                             <div key={`${stanzaIndex}-${lineIndex}`} className="lyric-line">
@@ -199,7 +350,7 @@ const StageMode = ({ onClose }) => {
                 setTotalPages(pages);
                 setDebugMetrics({ scrollLeft: el.scrollLeft, step, maxScrollLeft });
                 if (currentPage === 0) setPageVisualOffset(0);
-                if (!isEditing && pages === 1) {
+                if (pages === 1) {
                     const freeSpace = el.clientHeight - el.scrollHeight;
                     const extraTop = Math.max(0, Math.floor(freeSpace / 2));
                     setCenterOffsetTop(extraTop);
@@ -220,7 +371,7 @@ const StageMode = ({ onClose }) => {
         });
 
         return () => cancelAnimationFrame(rafId);
-    }, [resolvedSongId, fontSize, effectiveCols, activeRepertoire, currentSong?.lyrics, isEditing, stageScale, editLayoutTick]);
+    }, [resolvedSongId, fontSize, effectiveCols, activeRepertoire, displayLyrics, keepStanzaTogether, stageScale, editLayoutTick]);
 
     const scrollToPage = (page) => {
         if (lyricsViewRef.current) {
@@ -243,28 +394,6 @@ const StageMode = ({ onClose }) => {
         } else if (currentIndex < (activeRepertoire?.songIds.length || 1) - 1) {
             setCurrentIndex(i => i + 1);
             setCurrentPage(0);
-        }
-    };
-
-    const saveLyricsDebounced = (songId, lyrics) => {
-        pendingLyricsRef.current = lyrics;
-        if (saveLyricsTimeoutRef.current) {
-            clearTimeout(saveLyricsTimeoutRef.current);
-        }
-        saveLyricsTimeoutRef.current = setTimeout(() => {
-            updateSong(songId, { lyrics: pendingLyricsRef.current });
-            saveLyricsTimeoutRef.current = null;
-        }, 250);
-    };
-
-    const flushPendingLyrics = (songId) => {
-        if (!songId) return;
-        if (saveLyricsTimeoutRef.current) {
-            clearTimeout(saveLyricsTimeoutRef.current);
-            saveLyricsTimeoutRef.current = null;
-        }
-        if (typeof pendingLyricsRef.current === 'string') {
-            updateSong(songId, { lyrics: pendingLyricsRef.current });
         }
     };
 
@@ -295,8 +424,7 @@ const StageMode = ({ onClose }) => {
 
             if (isEditing) {
                 if (e.key === 'Escape') {
-                    flushPendingLyrics(currentSong?.id);
-                    setIsEditing(false);
+                    exitEditMode();
                 }
                 if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'd' || e.key === 'D')) {
                     e.preventDefault();
@@ -680,14 +808,9 @@ const StageMode = ({ onClose }) => {
                     {/* Controles de Estilo e Edição */}
                     <div className="hidden lg:flex items-center gap-1">
                         <button 
-                            onClick={() => {
-                                if (isEditing) {
-                                    flushPendingLyrics(currentSong?.id);
-                                }
-                                setIsEditing(!isEditing);
-                            }}
+                            onClick={() => (isEditing ? exitEditMode() : enterEditMode())}
                             className={`px-4 py-2 rounded-xl transition-all text-sm font-bold tracking-wider uppercase flex items-center gap-2 ${isEditing ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20' : 'bg-white/10 text-slate-300 hover:bg-white/20'}`}
-                            title="Editar Letra ao Vivo"
+                            title={isEditing ? 'Sair da edição (Esc)' : 'Editar letra — Enter: nova linha · Ctrl+Enter: nova estrofe'}
                         >
                             {isEditing ? 'Sair do Modo Edição' : 'Editar'}
                         </button>
@@ -737,72 +860,29 @@ const StageMode = ({ onClose }) => {
                 >
                     <div className="w-full h-full flex flex-col">
 
-            {/* Modo Edição: mesmo layout do palco mas com contentEditable */}
-            {isEditing ? (
-                <main
-                    key="editor"
-                    ref={lyricsViewRef}
-                    className="flex-1 overflow-x-hidden overflow-y-hidden py-8 outline-none caret-amber-400 selection:bg-amber-500/30"
-                >
-                    <div
-                        ref={editorContentRef}
-                        contentEditable
-                        suppressContentEditableWarning
-                        onInput={(e) => {
-                            saveLyricsDebounced(currentSong.id, e.currentTarget.innerText);
-                            setEditLayoutTick((prev) => prev + 1);
-                            requestAnimationFrame(() => {
-                                if (lyricsViewRef.current) {
-                                    snapToPage(lyricsViewRef.current, currentPage, totalPages);
-                                }
-                            });
-                        }}
-                        className="h-full outline-none caret-amber-400 selection:bg-amber-500/30"
-                        style={{
-                            paddingLeft: '64px',
-                            paddingRight: '64px',
-                            transform: `translateX(-${pageVisualOffset}px)`,
-                            fontSize: `${fontSize}rem`,
-                            columnCount: effectiveCols,
-                            columnGap: '64px',
-                            columnWidth: effectiveCols === 1 ? '100%' : 'auto',
-                            columnFill: 'auto',
-                            whiteSpace: 'pre-wrap',
-                            wordBreak: 'break-word',
-                            color: '#ffffff',
-                            lineHeight: '1.6',
-                            fontFamily: 'inherit',
-                            cursor: 'text',
-                            minHeight: '100%',
-                        }}
-                    />
-                </main>
-            ) : (
-                <main 
-                    key="viewer"
-                    ref={lyricsViewRef}
-                    className="flex-1 overflow-x-hidden overflow-y-hidden py-8"
-                    style={{ 
-                        paddingLeft: '64px',
-                        paddingRight: '64px',
-                        paddingTop: `calc(2rem + ${centerOffsetTop}px)`,
-                        paddingBottom: '2rem',
-                        fontSize: `${fontSize}rem`,
-                        lineHeight: '1.6',
-                        columnCount: effectiveCols,
-                        columnGap: '64px',
-                        columnWidth: effectiveCols === 1 ? '100%' : 'auto',
-                        columnFill: 'auto',
-                        whiteSpace: 'pre-wrap',
-                        wordBreak: 'break-word',
-                        color: '#ffffff'
-                    }}
-                >
-                    <div style={{ transform: `translateX(-${pageVisualOffset}px)` }}>
-                        {formatLyrics(currentSong.lyrics)}
-                    </div>
-                </main>
-            )}
+            <main
+                ref={lyricsViewRef}
+                className={`flex-1 overflow-x-hidden overflow-y-hidden py-8 ${isEditing ? 'cursor-text' : ''}`}
+                style={{
+                    paddingLeft: '64px',
+                    paddingRight: '64px',
+                    paddingTop: `calc(2rem + ${centerOffsetTop}px)`,
+                    paddingBottom: '2rem',
+                    fontSize: `${fontSize}rem`,
+                    lineHeight: '1.6',
+                    columnCount: effectiveCols,
+                    columnGap: '64px',
+                    columnWidth: effectiveCols === 1 ? '100%' : 'auto',
+                    columnFill: 'auto',
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                    color: '#ffffff',
+                }}
+            >
+                <div style={{ transform: `translateX(-${pageVisualOffset}px)` }}>
+                    {formatLyrics(displayLyrics, isEditing)}
+                </div>
+            </main>
 
             {/* Modal de Busca Rápida (Off-Script) */}
             {isSearchOpen && (

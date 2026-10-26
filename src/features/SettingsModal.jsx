@@ -21,6 +21,7 @@ const SettingsModal = () => {
         lastBackupTime,
         backupDirName,
         selectBackupFolder,
+        reconnectBackupFolder,
         disableAutoBackup,
     } = useLibrary();
 
@@ -109,10 +110,10 @@ const SettingsModal = () => {
     };
 
     return (
-        <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in">
-            <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+        <div className="fixed inset-0 z-[500] flex items-center justify-center p-2 sm:p-4 bg-black/75 backdrop-blur-md animate-in fade-in">
+            <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[calc(100dvh-1rem)] md:max-h-[90vh]">
                 {/* Header */}
-                <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-800/50">
+                <div className="flex-shrink-0 px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-800/50">
                     <h2 className="text-xl font-black text-slate-900 dark:text-white">Configurações</h2>
                     <button onClick={() => setIsSettingsModalOpen(false)} className="p-2 bg-slate-200 dark:bg-slate-700 text-slate-500 rounded-full hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors">
                         <X size={20} weight="bold" />
@@ -252,25 +253,43 @@ const SettingsModal = () => {
                                 </div>
 
                                 {/* Status do último backup */}
-                                <div className="flex items-center gap-3 bg-slate-900/60 rounded-xl px-3 py-2">
-                                    {backupStatus === 'saving' && <ArrowsClockwise size={16} className="text-indigo-400 animate-spin" />}
-                                    {backupStatus === 'ok' && <CheckCircle size={16} weight="fill" className="text-emerald-400" />}
-                                    {backupStatus === 'error' && <XCircle size={16} weight="fill" className="text-red-400" />}
-                                    {backupStatus === 'no_permission' && <ShieldCheck size={16} weight="fill" className="text-amber-400" />}
-                                    {backupStatus === 'idle' && <HardDrive size={16} className="text-slate-500" />}
+                                {backupStatus === 'needs_permission' ? (
+                                    <div className="flex items-center justify-between gap-3 bg-amber-500/15 border border-amber-500/30 rounded-xl p-3">
+                                        <div className="flex items-center gap-2.5 min-w-0">
+                                            <ShieldCheck size={18} weight="fill" className="text-amber-400 flex-shrink-0" />
+                                            <div>
+                                                <p className="text-xs font-bold text-amber-300 leading-tight">Reconexão Necessária</p>
+                                                <p className="text-[10px] text-amber-400/80 truncate">Navegador exige confirmação para salvar</p>
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={reconnectBackupFolder}
+                                            className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-900 font-black text-xs rounded-lg transition-all flex-shrink-0 active:scale-95 shadow-sm"
+                                        >
+                                            Reconectar
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div className="flex items-center gap-3 bg-slate-900/60 rounded-xl px-3 py-2">
+                                        {backupStatus === 'saving' && <ArrowsClockwise size={16} className="text-indigo-400 animate-spin" />}
+                                        {backupStatus === 'ok' && <CheckCircle size={16} weight="fill" className="text-emerald-400" />}
+                                        {backupStatus === 'error' && <XCircle size={16} weight="fill" className="text-red-400" />}
+                                        {backupStatus === 'no_permission' && <ShieldCheck size={16} weight="fill" className="text-amber-400" />}
+                                        {backupStatus === 'idle' && <HardDrive size={16} className="text-slate-500" />}
 
-                                    <span className="text-xs text-slate-300 flex-1">
-                                        {backupStatus === 'saving' && 'Salvando backup...'}
-                                        {backupStatus === 'ok' && (
-                                            lastBackupTime
-                                                ? `Salvo às ${lastBackupTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`
-                                                : 'Backup ativo — aguardando alterações'
-                                        )}
-                                        {backupStatus === 'error' && 'Erro ao salvar. Verifique as permissões.'}
-                                        {backupStatus === 'no_permission' && 'Permissão negada. Clique abaixo para reconfigurar.'}
-                                        {backupStatus === 'idle' && 'Backup automático ativo'}
-                                    </span>
-                                </div>
+                                        <span className="text-xs text-slate-300 flex-1">
+                                            {backupStatus === 'saving' && 'Salvando backup...'}
+                                            {backupStatus === 'ok' && (
+                                                lastBackupTime
+                                                    ? `Salvo às ${lastBackupTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`
+                                                    : 'Backup ativo — aguardando alterações'
+                                            )}
+                                            {backupStatus === 'error' && 'Erro ao salvar. Verifique as permissões da pasta.'}
+                                            {backupStatus === 'no_permission' && 'Permissão negada. Clique abaixo para reconfigurar.'}
+                                            {backupStatus === 'idle' && 'Backup automático ativo'}
+                                        </span>
+                                    </div>
+                                )}
 
                                 {/* Ações */}
                                 <div className="flex gap-2">

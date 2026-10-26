@@ -8,9 +8,11 @@ import Teleprompter from './features/Teleprompter';
 import InstallPWA from './components/InstallPWA';
 import ConfirmModal from './components/ConfirmModal';
 import SettingsModal from './features/SettingsModal';
+import ImportSongModal from './features/ImportSongModal';
+import BackupConflictModal from './components/BackupConflictModal';
 
 function AppContent() {
-  const { isStageMode, setIsStageMode, confirmDialog, closeConfirm } = useLibrary();
+  const { isStageMode, setIsStageMode, confirmDialog, closeConfirm, backupConflict } = useLibrary();
 
   return (
     <>
@@ -25,6 +27,7 @@ function AppContent() {
       <ListManagerModal />
       <Teleprompter />
       <SettingsModal />
+      <ImportSongModal />
       <InstallPWA />
 
       <ConfirmModal 
@@ -34,6 +37,15 @@ function AppContent() {
         onConfirm={confirmDialog.onConfirm}
         onCancel={closeConfirm}
         isDestructive={true}
+      />
+
+      <BackupConflictModal
+        isOpen={!!backupConflict}
+        conflictData={backupConflict}
+        onRestore={backupConflict?.onRestore}
+        onMerge={backupConflict?.onMerge}
+        onOverwrite={backupConflict?.onOverwrite}
+        onCancel={backupConflict?.onCancel}
       />
     </>
   );

@@ -7,6 +7,7 @@ import {
   Playlist,
   Gear,
   Plus,
+  Sparkle
 } from '@phosphor-icons/react';
 
 /**
@@ -16,7 +17,8 @@ const BottomNav = ({ activeTab, setActiveTab, onDrawerOpen, onCloseDrawer }) => 
   const { 
     addSong, 
     addRepertoire, 
-    setIsSettingsModalOpen, 
+    setIsSettingsModalOpen,
+    setIsImportModalOpen,
     repertoires, 
     songLibrary,
     setEditingRepertoireId 
@@ -66,14 +68,30 @@ const BottomNav = ({ activeTab, setActiveTab, onDrawerOpen, onCloseDrawer }) => 
               addSong();
               setIsAddMenuOpen(false);
             }}
-            className="flex items-center gap-3 w-full p-4 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-2xl transition-colors text-left"
+            className="flex items-center gap-3 w-full p-3.5 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-2xl transition-colors text-left"
           >
-            <div className="w-10 h-10 bg-indigo-500/10 text-indigo-500 rounded-xl flex items-center justify-center">
-              <MusicNotesPlus size={22} weight="bold" />
+            <div className="w-9 h-9 bg-indigo-500/10 text-indigo-500 rounded-xl flex items-center justify-center">
+              <MusicNotesPlus size={20} weight="bold" />
             </div>
             <div className="flex flex-col">
               <span className="text-sm font-bold text-slate-700 dark:text-slate-200">Música</span>
-              <span className="text-[10px] text-slate-400">Criar nova cifra</span>
+              <span className="text-[10px] text-slate-400">Criar em branco</span>
+            </div>
+          </button>
+
+          <button
+            onClick={() => {
+              setIsImportModalOpen(true);
+              setIsAddMenuOpen(false);
+            }}
+            className="flex items-center gap-3 w-full p-3.5 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-2xl transition-colors text-left"
+          >
+            <div className="w-9 h-9 bg-amber-500/10 text-amber-500 rounded-xl flex items-center justify-center">
+              <Sparkle size={20} weight="fill" />
+            </div>
+            <div className="flex flex-col">
+              <span className="text-sm font-bold text-slate-700 dark:text-slate-200">Importar por Link</span>
+              <span className="text-[10px] text-slate-400">Letras ou CifraClub</span>
             </div>
           </button>
 

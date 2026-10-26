@@ -12,6 +12,7 @@ import {
   Queue,
   MusicNote,
   X,
+  Play,
 } from '@phosphor-icons/react';
 /**
  * Drawer deslizante de baixo para cima — exibe Repertórios ou Biblioteca.
@@ -130,56 +131,83 @@ const MobileDrawer = ({ isOpen, onClose, activeTab, setActiveTab }) => {
                 <p>Nenhum repertório ainda.</p>
               </div>
             ) : (
-              repertoires.map(rep => (
-                <div
-                  key={rep.id}
-                  onClick={() => {
-                    setActiveRepertoireId(rep.id);
-                    setActiveSongId(null);
-                    onClose();
-                  }}
-                  className={`flex items-center justify-between p-4 rounded-2xl cursor-pointer transition-all ${
-                    activeRepertoireId === rep.id
-                      ? 'bg-gradient-to-br from-emerald-400 to-emerald-600 text-white shadow-lg shadow-emerald-500/20'
-                      : 'bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800'
-                  }`}
-                >
-                  <div className="flex items-center gap-3 truncate">
-                    <PlayCircle
-                      size={24}
-                      weight={activeRepertoireId === rep.id ? 'fill' : 'bold'}
-                      className={activeRepertoireId === rep.id ? 'text-white' : 'text-emerald-500'}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setActiveRepertoireId(rep.id);
-                        setIsStageMode(true);
-                        onClose();
-                      }}
-                    />
-                    <span className="font-bold text-sm truncate">{rep.name}</span>
+              repertoires.map(rep => {
+                const isActive = activeRepertoireId === rep.id;
+                const songCount = rep.songIds?.length || 0;
+
+                return (
+                  <div
+                    key={rep.id}
+                    onClick={() => {
+                      setActiveRepertoireId(rep.id);
+                      setActiveSongId(null);
+                      onClose();
+                    }}
+                    className={`flex flex-col p-3.5 rounded-2xl cursor-pointer transition-all ${
+                      isActive
+                        ? 'bg-gradient-to-r from-emerald-500/15 via-emerald-500/10 to-transparent border-l-4 border-l-emerald-500 border-y border-r border-emerald-500/30 text-slate-900 dark:text-white shadow-md'
+                        : 'bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
+                          isActive ? 'bg-emerald-500 ring-4 ring-emerald-500/20' : 'bg-slate-300 dark:bg-slate-700'
+                        }`} />
+                        <span className="font-bold text-sm truncate">{rep.name}</span>
+                      </div>
+
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActiveRepertoireId(rep.id);
+                          setIsStageMode(true);
+                          onClose();
+                        }}
+                        className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-black uppercase transition-all active:scale-95 flex-shrink-0 ${
+                          isActive
+                            ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-sm'
+                            : 'bg-emerald-500/10 hover:bg-emerald-500 text-emerald-500 hover:text-white dark:text-emerald-400'
+                        }`}
+                        title="Tocar no Palco"
+                      >
+                        <Play size={11} weight="fill" />
+                        <span>Palco</span>
+                      </button>
+                    </div>
+
+                    <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-slate-200/50 dark:border-slate-800/50 text-xs">
+                      <span className="text-slate-400 dark:text-slate-500 font-medium text-[11px]">
+                        {songCount} {songCount === 1 ? 'música' : 'músicas'}
+                      </span>
+
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setActiveRepertoireId(rep.id); setIsTeleprompterOpen(true); onClose(); }}
+                          className="p-2 text-slate-400 hover:text-indigo-400 hover:bg-indigo-500/10 rounded-lg"
+                          title="Teleprompter"
+                        >
+                          <MonitorPlay size={17} weight="bold" />
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setEditingRepertoireId(rep.id); onClose(); }}
+                          className="p-2 text-slate-400 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg"
+                          title="Editar"
+                        >
+                          <PencilSimple size={17} weight="bold" />
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); deleteRepertoire(rep.id); }}
+                          className="p-2 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg"
+                          title="Excluir"
+                        >
+                          <Trash size={17} weight="bold" />
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setActiveRepertoireId(rep.id); setIsTeleprompterOpen(true); onClose(); }}
-                      className="p-2 hover:bg-indigo-500/20 text-indigo-400 rounded-lg"
-                    >
-                      <MonitorPlay size={18} weight="bold" />
-                    </button>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setEditingRepertoireId(rep.id); onClose(); }}
-                      className="p-2 hover:bg-white/20 rounded-lg"
-                    >
-                      <PencilSimple size={18} weight="bold" />
-                    </button>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); deleteRepertoire(rep.id); }}
-                      className="p-2 hover:bg-red-500/20 text-red-400 rounded-lg"
-                    >
-                      <Trash size={18} weight="bold" />
-                    </button>
-                  </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         )}

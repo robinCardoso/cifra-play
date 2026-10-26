@@ -18,6 +18,7 @@ export const LibraryProvider = ({ children }) => {
   const [isListModalOpen, setIsListModalOpen] = useState(false);
   const [isTeleprompterOpen, setIsTeleprompterOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState({ isOpen: false, title: '', message: '', onConfirm: null });
 
   const requestConfirm = (title, message, onConfirm) => {
@@ -87,6 +88,54 @@ export const LibraryProvider = ({ children }) => {
     );
   };
 
+  const restoreData = (data) => {
+    if (!data) return;
+    if (data.songLibrary) persistenceSet.setSongLibrary(data.songLibrary);
+    if (data.repertoires) persistenceSet.setRepertoires(data.repertoires);
+    if (data.artists) persistenceSet.setArtists(data.artists);
+    if (data.keys) persistenceSet.setKeys(data.keys);
+    if (data.styles) persistenceSet.setStyles(data.styles);
+  };
+
+  const mergeData = (data) => {
+    if (!data) return;
+    if (data.songLibrary) {
+      persistenceSet.setSongLibrary(prev => {
+        const existingIds = new Set(prev.map(s => s.id));
+        const news = data.songLibrary.filter(s => !existingIds.has(s.id));
+        return [...prev, ...news];
+      });
+    }
+    if (data.repertoires) {
+      persistenceSet.setRepertoires(prev => {
+        const existingIds = new Set(prev.map(r => r.id));
+        const news = data.repertoires.filter(r => !existingIds.has(r.id));
+        return [...prev, ...news];
+      });
+    }
+    if (data.artists) persistenceSet.setArtists(prev => [...new Set([...prev, ...data.artists])]);
+    if (data.keys) persistenceSet.setKeys(prev => [...new Set([...prev, ...data.keys])]);
+    if (data.styles) persistenceSet.setStyles(prev => [...new Set([...prev, ...data.styles])]);
+  };
+
+  const selectBackupFolder = async () => {
+    const currentAppData = {
+      songLibrary: persistenceSet.songLibrary,
+      repertoires: persistenceSet.repertoires,
+      artists: persistenceSet.artists,
+      keys: persistenceSet.keys,
+      styles: persistenceSet.styles
+    };
+
+    return autoBackup.selectBackupFolder(currentAppData, (action, data) => {
+      if (action === 'restore') {
+        restoreData(data);
+      } else if (action === 'merge') {
+        mergeData(data);
+      }
+    });
+  };
+
   // Dispara o backup automático sempre que os dados principais mudam
   useEffect(() => {
     if (!autoBackup.autoBackupEnabled) return;
@@ -122,13 +171,17 @@ export const LibraryProvider = ({ children }) => {
     isListModalOpen, setIsListModalOpen,
     isTeleprompterOpen, setIsTeleprompterOpen,
     isSettingsModalOpen, setIsSettingsModalOpen,
+    isImportModalOpen, setIsImportModalOpen,
     confirmDialog, closeConfirm, requestConfirm,
     addSong,
     updateSong,
     deleteSong,
     addRepertoire,
     updateRepertoire,
-    deleteRepertoire
+    deleteRepertoire,
+    selectBackupFolder,
+    restoreData,
+    mergeData
   };
 
   return (

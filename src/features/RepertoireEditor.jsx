@@ -11,6 +11,7 @@ import {
     MagnifyingGlass,
     PencilSimple
 } from '@phosphor-icons/react';
+import SearchableSelect from '../components/SearchableSelect';
 
 const RepertoireEditor = () => {
     const { 
@@ -174,14 +175,15 @@ const RepertoireEditor = () => {
                                     className="w-full bg-transparent border-none focus:ring-0 text-sm px-2 py-2 text-slate-200 placeholder-slate-500 outline-none"
                                 />
                             </div>
-                            <select 
-                                value={styleFilter}
-                                onChange={(e) => setStyleFilter(e.target.value)}
-                                className="w-40 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-300 outline-none focus:border-indigo-500 appearance-none"
-                            >
-                                <option value="">Todos os Estilos</option>
-                                {styles.map(s => <option key={s} value={s}>{s}</option>)}
-                            </select>
+                            <div className="w-48 flex-shrink-0">
+                                <SearchableSelect 
+                                    options={['Todos os Estilos', ...styles]}
+                                    value={styleFilter || 'Todos os Estilos'}
+                                    onChange={(val) => setStyleFilter(val === 'Todos os Estilos' ? '' : val)}
+                                    placeholder="Todos os Estilos"
+                                    maxVisible={5}
+                                />
+                            </div>
                         </div>
                     </div>
 
