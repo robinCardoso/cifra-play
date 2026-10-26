@@ -14,6 +14,10 @@ import {
   MusicNotes,
   SlidersHorizontal,
   X,
+  PencilSimple,
+  Check,
+  Plus,
+  Minus,
 } from '@phosphor-icons/react';
 
 function parseLyrics(text) {
@@ -48,7 +52,38 @@ function insertStanzaAfterInLyrics(lyrics, stanzaIndex) {
     return serializeLyrics(stanzas);
 }
 
-function EditableLyricLine({ stanzaIndex, lineIndex, line, onCommit, onRequestNewLine, onRequestNewStanza }) {
+function mergeStanzaWithPreviousInLyrics(lyrics, stanzaIndex) {
+    if (stanzaIndex <= 0) return lyrics;
+    const stanzas = parseLyrics(lyrics);
+    stanzas[stanzaIndex - 1] = [...stanzas[stanzaIndex - 1], ...stanzas[stanzaIndex]];
+    stanzas.splice(stanzaIndex, 1);
+    return serializeLyrics(stanzas);
+}
+
+function mergeWithPreviousLineInLyrics(lyrics, stanzaIndex, lineIndex) {
+    if (lineIndex <= 0) return mergeStanzaWithPreviousInLyrics(lyrics, stanzaIndex);
+    const stanzas = parseLyrics(lyrics);
+    if (!stanzas[stanzaIndex]) return lyrics;
+    stanzas[stanzaIndex] = [...stanzas[stanzaIndex]];
+    const prev = stanzas[stanzaIndex][lineIndex - 1];
+    const cur = stanzas[stanzaIndex][lineIndex];
+    stanzas[stanzaIndex][lineIndex - 1] = prev + cur;
+    stanzas[stanzaIndex].splice(lineIndex, 1);
+    return serializeLyrics(stanzas);
+}
+
+function isCaretAtStart(el) {
+    const sel = window.getSelection();
+    if (!sel?.rangeCount || !el) return false;
+    const range = sel.getRangeAt(0);
+    if (!el.contains(range.startContainer)) return false;
+    const probe = document.createRange();
+    probe.selectNodeContents(el);
+    probe.setEnd(range.startContainer, range.startOffset);
+    return probe.toString().length === 0;
+}
+
+function EditableLyricLine({ stanzaIndex, lineIndex, line, onCommit, onRequestNewLine, onRequestNewStanza, onMergeWithPrevious }) {
     const ref = useRef(null);
 
     useEffect(() => {
@@ -79,6 +114,13 @@ function EditableLyricLine({ stanzaIndex, lineIndex, line, onCommit, onRequestNe
                 if (e.key === 'Enter') {
                     e.preventDefault();
                     onRequestNewLine(stanzaIndex, lineIndex);
+                    return;
+                }
+                if (e.key === 'Backspace' && isCaretAtStart(e.currentTarget)) {
+                    if (lineIndex > 0 || stanzaIndex > 0) {
+                        e.preventDefault();
+                        onMergeWithPrevious(stanzaIndex, lineIndex);
+                    }
                 }
             }}
         />
@@ -266,6 +308,22 @@ const StageMode = ({ onClose }) => {
         focusLyricLine(stanzaIndex + 1, 0);
     };
 
+    const handleMergeWithPrevious = (stanzaIndex, lineIndex) => {
+        let focusStanza = stanzaIndex;
+        let focusLine = lineIndex;
+        pushEditLyrics((prev) => {
+            const stanzasBefore = parseLyrics(prev);
+            if (lineIndex > 0) {
+                focusLine = lineIndex - 1;
+                return mergeWithPreviousLineInLyrics(prev, stanzaIndex, lineIndex);
+            }
+            focusStanza = stanzaIndex - 1;
+            focusLine = Math.max(0, (stanzasBefore[stanzaIndex - 1]?.length ?? 1) - 1);
+            return mergeStanzaWithPreviousInLyrics(prev, stanzaIndex);
+        });
+        focusLyricLine(focusStanza, focusLine);
+    };
+
     const enterEditMode = () => {
         const lyrics = currentSong?.lyrics || '';
         setEditLyrics(lyrics);
@@ -290,12 +348,15 @@ const StageMode = ({ onClose }) => {
         if (!text && !editable) return null;
         const stanzas = text ? text.split(/\n\s*\n/) : [''];
 
+        const stanzaFlowClass =
+            keepStanzaTogether && effectiveCols === 1 ? 'keep-stanza-together' : '';
+
         return stanzas.map((stanza, stanzaIndex) => {
             const lines = stanza.split('\n');
             return (
                 <div
                     key={stanzaIndex}
-                    className={`lyric-stanza ${keepStanzaTogether ? 'keep-stanza-together' : ''}`}
+                    className={`lyric-stanza ${stanzaFlowClass}`}
                 >
                     {lines.map((line, lineIndex) => {
                         if (editable) {
@@ -308,6 +369,7 @@ const StageMode = ({ onClose }) => {
                                     onCommit={handleLineCommit}
                                     onRequestNewLine={handleRequestNewLine}
                                     onRequestNewStanza={handleRequestNewStanza}
+                                    onMergeWithPrevious={handleMergeWithPrevious}
                                 />
                             );
                         }
@@ -547,7 +609,7 @@ const StageMode = ({ onClose }) => {
         return (
             <div
                 ref={mobileContainerRef}
-                className="fixed inset-0 z-[220] bg-slate-950 flex flex-col text-white overflow-hidden"
+                className="fixed inset-0 z-[500] bg-slate-950 flex flex-col text-white overflow-hidden"
                 style={{ touchAction: 'pan-y', cursor: isDragging ? 'grabbing' : 'grab', userSelect: 'none' }}
 
                 onTouchStart={handleTouchStart}
@@ -558,74 +620,124 @@ const StageMode = ({ onClose }) => {
                 onMouseUp={handleMouseUp}
                 onMouseLeave={handleMouseUp}
             >
-                {/* ── Header Mobile ── */}
-                <header className="flex-shrink-0 bg-slate-900/90 backdrop-blur-md px-3 py-2.5 flex items-center justify-between border-b border-white/10 safe-top">
-                    <div className="flex flex-col min-w-0 flex-1">
+                {/* ── Header Mobile Moderno ── */}
+                <header className="flex-shrink-0 bg-slate-900/95 backdrop-blur-md px-3.5 py-2.5 flex items-center justify-between border-b border-white/10 safe-top">
+                    <div className="flex flex-col min-w-0 flex-1 pr-2">
                         {activeRepertoire && (
                             <span className="text-indigo-400 text-[10px] font-black uppercase tracking-widest">
-                                {offScriptSong ? '⚡ Fora de Roteiro' : `${currentIndex + 1} / ${totalSongs}`}
+                                {offScriptSong ? '⚡ Fora de Roteiro' : `Música ${currentIndex + 1} de ${totalSongs}`}
                             </span>
                         )}
-                        <h2 className="font-black text-base leading-tight truncate">
+                        <h2 className="font-black text-sm sm:text-base leading-tight truncate">
                             {currentSong.title}
                         </h2>
                         {currentSong.key && (
-                            <span className="text-indigo-300 text-xs font-bold">Tom: {currentSong.key}</span>
+                            <span className="text-indigo-300 text-[11px] font-bold">Tom: {currentSong.key}</span>
                         )}
                     </div>
-                    <div className="flex items-center gap-2 flex-shrink-0 ml-3">
-                        {/* Controles */}
+
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                        {/* Botão de Busca */}
+                        <button
+                            onClick={() => setIsSearchOpen(v => !v)}
+                            className={`p-2 rounded-xl transition-all ${
+                                isSearchOpen ? 'bg-indigo-600 text-white' : 'bg-white/10 text-slate-300'
+                            }`}
+                            title="Buscar Música"
+                        >
+                            <MagnifyingGlass size={18} weight="bold" />
+                        </button>
+
+                        {/* Botão de Editar Música */}
+                        <button
+                            onClick={() => (isEditing ? exitEditMode() : enterEditMode())}
+                            className={`px-2.5 py-1.5 rounded-xl transition-all text-xs font-black uppercase tracking-wider flex items-center gap-1 active:scale-95 ${
+                                isEditing
+                                    ? 'bg-amber-400 text-slate-950 ring-2 ring-amber-400/50'
+                                    : 'bg-white/10 text-slate-200'
+                            }`}
+                            title={isEditing ? 'Concluir Edição' : 'Editar Letra'}
+                        >
+                            {isEditing ? (
+                                <>
+                                    <Check size={14} weight="bold" />
+                                    <span>Salvar</span>
+                                </>
+                            ) : (
+                                <>
+                                    <PencilSimple size={14} weight="bold" className="text-amber-400" />
+                                    <span>Editar</span>
+                                </>
+                            )}
+                        </button>
+
+                        {/* Controles de Palco */}
                         <button
                             onClick={() => setMobileControlsOpen(v => !v)}
-                            className={`p-2.5 rounded-xl transition-all ${
+                            className={`p-2 rounded-xl transition-all ${
                                 mobileControlsOpen ? 'bg-indigo-600 text-white' : 'bg-white/10 text-slate-400'
                             }`}
+                            title="Ajustes de Palco"
                         >
-                            <SlidersHorizontal size={20} weight="bold" />
+                            <SlidersHorizontal size={18} weight="bold" />
                         </button>
+
+                        {/* Fechar */}
                         <button
                             onClick={onClose}
-                            className="p-2.5 bg-red-500/20 text-red-400 rounded-xl border border-red-500/20"
+                            className="p-2 bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white rounded-xl border border-red-500/20 active:scale-95 transition-all"
+                            title="Sair do Palco"
                         >
-                            <X size={20} weight="bold" />
+                            <X size={18} weight="bold" />
                         </button>
                     </div>
                 </header>
 
-                {/* ── Painel de controles (bottom sheet) ── */}
+                {/* Aviso quando em modo edição no mobile */}
+                {isEditing && (
+                    <div className="bg-amber-500/20 border-b border-amber-500/30 px-3 py-1.5 flex items-center justify-between text-[11px] text-amber-300 font-bold animate-in fade-in">
+                        <span>✏️ Toque em qualquer linha para editar o texto</span>
+                        <button onClick={exitEditMode} className="bg-amber-400 text-slate-950 px-2 py-0.5 rounded font-black text-[10px]">
+                            Concluir
+                        </button>
+                    </div>
+                )}
+
+                {/* ── Painel de controles mobile ── */}
                 {mobileControlsOpen && (
-                    <div className="flex-shrink-0 bg-slate-900 border-b border-white/10 px-4 py-3 flex items-center gap-3 flex-wrap">
+                    <div className="flex-shrink-0 bg-slate-900 border-b border-white/10 px-3 py-2.5 flex items-center justify-between gap-2 animate-in slide-in-from-top-2">
                         {/* Fonte */}
-                        <div className="flex items-center gap-1 bg-white/5 rounded-xl p-1">
-                            <button onClick={() => setFontSize(p => Math.max(0.8, p - 0.2))} className="p-2 hover:bg-white/10 rounded-lg"><TextT size={16} /></button>
-                            <span className="text-xs font-bold px-1 text-slate-400">{fontSize.toFixed(1)}x</span>
-                            <button onClick={() => setFontSize(p => Math.min(4, p + 0.2))} className="p-2 hover:bg-white/10 rounded-lg"><TextT size={20} weight="bold" /></button>
+                        <div className="flex items-center gap-1 bg-white/5 rounded-xl p-1 border border-white/10">
+                            <button onClick={() => setFontSize(p => Math.max(0.8, p - 0.2))} className="p-1.5 hover:bg-white/10 rounded-lg text-slate-300">
+                                <Minus size={14} weight="bold" />
+                            </button>
+                            <span className="text-xs font-bold px-1 text-slate-300 min-w-[28px] text-center">{fontSize.toFixed(1)}x</span>
+                            <button onClick={() => setFontSize(p => Math.min(4, p + 0.2))} className="p-1.5 hover:bg-white/10 rounded-lg text-slate-300">
+                                <Plus size={14} weight="bold" />
+                            </button>
                         </div>
-                        {/* 2 colunas só no palco largo; no celular é sempre 1 (legível) */}
-                        <div
-                            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-slate-500 border border-white/10"
-                            title="No celular a letra usa uma coluna. No desktop, use o botão de colunas do palco."
-                        >
-                            <Columns size={16} /> 1 col.
-                        </div>
+
+                        {/* Estrofes */}
                         <button
                             type="button"
                             onClick={() => setKeepStanzaTogether((v) => !v)}
-                            className={`px-3 py-2 rounded-xl text-xs font-black uppercase tracking-widest border transition-all ${
+                            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border transition-all ${
                                 keepStanzaTogether
                                     ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400/40'
                                     : 'bg-white/5 text-slate-400 border-white/10'
                             }`}
-                            title="Evitar estrofes cortadas entre páginas (evitar sobras de uma linha)"
                         >
-                            Estrofes
+                            <div className={`w-1.5 h-1.5 rounded-full ${keepStanzaTogether ? 'bg-emerald-400' : 'bg-slate-600'}`} />
+                            <span>Estrofes</span>
                         </button>
+
                         {/* Tela cheia */}
                         <button
                             onClick={toggleFullscreen}
-                            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-white/10 text-slate-300"
+                            className="flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-bold bg-white/10 text-slate-300 hover:text-white"
                         >
-                            <ArrowsOut size={16} /> Tela Cheia
+                            <ArrowsOut size={15} />
+                            <span>Tela Cheia</span>
                         </button>
                     </div>
                 )}
@@ -633,20 +745,20 @@ const StageMode = ({ onClose }) => {
                 {/* ── Área de letra — Paginação horizontal (swipe) ── */}
                 <main
                     ref={lyricsViewRef}
-                    className="flex-1 overflow-x-hidden overflow-y-hidden px-4 pt-4"
+                    className={`flex-1 overflow-x-hidden overflow-y-hidden px-4 pt-4 ${isEditing ? 'cursor-text' : ''}`}
                     style={{
                         fontSize: `${mobileFontSize}rem`,
                         lineHeight: String(MOBILE_LH),
                         columnCount: effectiveCols,
                         columnGap: '2rem',
-                        columnFill: 'auto', // Essencial para colunas transbordarem horizontalmente
+                        columnFill: 'auto',
                         paddingBottom: mobileLyricsPadBottom,
                         touchAction: 'pan-y',
                         transform: `translateX(${swipeOffset}px)`,
                         transition: swipeOffset === 0 ? 'transform 0.3s ease-out' : 'none',
                     }}
                 >
-                    {formatLyrics(currentSong.lyrics)}
+                    {formatLyrics(displayLyrics, isEditing)}
                 </main>
 
 
@@ -726,126 +838,204 @@ const StageMode = ({ onClose }) => {
     // LAYOUT DESKTOP: canvas 1920×1080 (original)
     // ────────────────────────────────────────────
     return (
-        <div className="fixed inset-0 z-[220] bg-slate-950 overflow-hidden flex flex-col text-white">
+        <div className="fixed inset-0 z-[500] bg-slate-950 overflow-hidden flex flex-col text-white">
             
-            {/* Header de Controle do Palco */}
-            <header className="flex-shrink-0 min-h-[104px] bg-slate-900/80 backdrop-blur-md px-6 py-4 flex items-center justify-between border-b border-white/5 relative z-10 w-full">
-                <div className="flex items-center gap-4">
-                    <div className="flex flex-col">
+            {/* Header de Controle do Palco Modernizado */}
+            <header className="flex-shrink-0 h-[68px] md:h-[72px] bg-slate-900/95 backdrop-blur-md px-5 md:px-6 flex items-center justify-between border-b border-white/10 relative z-20 w-full transition-all">
+                <div className="flex items-center gap-3.5 min-w-0">
+                    <div className="flex flex-col min-w-0">
                         {offScriptSong ? (
-                            <span className="text-amber-500 text-[10px] font-black uppercase tracking-widest flex items-center gap-1">
+                            <span className="text-amber-400 text-[10px] font-black uppercase tracking-widest flex items-center gap-1">
                                 <ArrowUUpLeft weight="bold"/> Fora de Roteiro
                             </span>
                         ) : activeRepertoire ? (
                             <span className="text-indigo-400 text-[10px] font-black uppercase tracking-widest leading-none">
-                                Música {currentIndex + 1}/{activeRepertoire.songIds.length}
+                                Música {currentIndex + 1} de {activeRepertoire.songIds.length}
                             </span>
                         ) : (
                             <span className="text-indigo-400 text-[10px] font-black uppercase tracking-widest leading-none flex items-center gap-1">
                                 <MusicNotes weight="bold" /> Ensaio Avulso
                             </span>
                         )}
-                        <h2 className={`text-2xl font-black truncate max-w-xs md:max-w-md ${offScriptSong ? 'text-amber-400' : ''}`}>
+                        <h2 className={`text-xl md:text-2xl font-black truncate max-w-xs md:max-w-md ${offScriptSong ? 'text-amber-400' : 'text-white'}`}>
                             {currentSong.title}
                         </h2>
                     </div>
-                    <div className="hidden md:flex flex-col opacity-50 ml-4 pl-4 border-l border-white/10">
-                        <span className="text-[11px] uppercase font-bold tracking-widest">Tom</span>
-                        <span className="font-black text-lg text-indigo-300">{currentSong.key || '--'}</span>
-                    </div>
+
+                    {currentSong.key && (
+                        <div className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-indigo-500/15 border border-indigo-500/30 text-indigo-300 flex-shrink-0">
+                            <span className="text-[10px] uppercase font-bold text-indigo-400/80">Tom</span>
+                            <span className="font-black text-xs md:text-sm">{currentSong.key}</span>
+                        </div>
+                    )}
 
                     {offScriptSong && (
                         <button 
                             onClick={() => { setOffScriptSong(null); setCurrentPage(0); }}
-                            className="ml-4 px-3 py-1.5 bg-amber-500/20 text-amber-400 hover:bg-amber-500 hover:text-white rounded-lg text-xs font-bold transition-all flex items-center gap-2"
+                            className="ml-2 px-2.5 py-1.5 bg-amber-500/20 text-amber-400 hover:bg-amber-500 hover:text-white rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 active:scale-95 flex-shrink-0"
                         >
-                            <ArrowUUpLeft size={16} weight="bold"/>
-                            <span className="hidden sm:inline">Voltar ao Repertório</span>
+                            <ArrowUUpLeft size={14} weight="bold"/>
+                            <span className="hidden md:inline text-xs">Voltar</span>
                         </button>
                     )}
                 </div>
 
-                <div className="flex items-center gap-3 md:gap-4">
-                    {/* Pesquisa (CTRL+F) */}
-                    <button 
-                        onClick={() => setIsSearchOpen(!isSearchOpen)}
-                        className={`p-2.5 rounded-xl transition-all font-bold text-sm flex items-center gap-2 ${isSearchOpen ? 'bg-indigo-600 text-white' : 'hover:bg-white/10 text-slate-400 hover:text-white'}`}
-                        title="Buscar Música (Ctrl + F)"
-                    >
-                        <MagnifyingGlass size={22} weight="bold" />
-                        <span className="hidden lg:inline mr-1">Buscar</span>
-                    </button>
-
-                    {/* Botões de Navegação (Só mostra se houver repertório) */}
-                    {activeRepertoire && (
-                        <div className="flex items-center bg-white/5 rounded-2xl p-1 gap-1 border border-white/10">
-                            <button onClick={handlePrev} className="p-2.5 hover:bg-white/10 rounded-xl transition-all"><CaretLeft size={22} weight="bold" /></button>
-                            <span className="text-sm font-bold px-2 whitespace-nowrap opacity-70">Pág. {currentPage + 1}/{totalPages}</span>
-                            <button onClick={handleNext} className="p-2.5 hover:bg-white/10 rounded-xl transition-all"><CaretRight size={22} weight="bold" /></button>
-                        </div>
-                    )}
+                {/* Toolbar de Controles Agrupados */}
+                <div className="flex items-center gap-2 md:gap-3">
                     
-                    {/* Paginação Isolada (Para Música Avulsa) */}
-                    {!activeRepertoire && (
-                        <div className="flex items-center bg-white/5 rounded-2xl p-1 gap-1 border border-white/10">
-                            <button onClick={handlePrev} className="p-2.5 hover:bg-white/10 rounded-xl transition-all"><CaretLeft size={22} weight="bold" /></button>
-                            <span className="text-sm font-bold px-2 whitespace-nowrap opacity-70">Pág. {currentPage + 1}/{totalPages}</span>
-                            <button onClick={handleNext} className="p-2.5 hover:bg-white/10 rounded-xl transition-all"><CaretRight size={22} weight="bold" /></button>
-                        </div>
-                    )}
+                    {/* Paginação Compacta */}
+                    <div className="flex items-center bg-white/5 rounded-xl p-0.5 border border-white/10 shadow-inner">
+                        <button 
+                            onClick={handlePrev} 
+                            disabled={currentPage === 0 && currentIndex === 0 && !offScriptSong}
+                            className="p-1.5 hover:bg-white/10 disabled:opacity-30 rounded-lg transition-all text-slate-300"
+                            title="Página Anterior (Seta Esquerda / Espaço)"
+                        >
+                            <CaretLeft size={16} weight="bold" />
+                        </button>
+                        <span className="text-xs font-bold px-2 whitespace-nowrap text-slate-300">
+                            {currentPage + 1}/{totalPages}
+                        </span>
+                        <button 
+                            onClick={handleNext} 
+                            className="p-1.5 hover:bg-white/10 rounded-lg transition-all text-slate-300"
+                            title="Próxima Página (Seta Direita / PageDown)"
+                        >
+                            <CaretRight size={16} weight="bold" />
+                        </button>
+                    </div>
 
-                    <span className="hidden xl:inline text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-lg border border-white/10 text-slate-400 bg-white/5">
-                        Layout 16:9 fixo
-                    </span>
-                    <button
-                        onClick={() => setKeepStanzaTogether((prev) => !prev)}
-                        className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest border transition-all ${keepStanzaTogether ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400/40' : 'bg-white/5 text-slate-400 border-white/10 hover:bg-white/10'}`}
-                        title="Evitar quebra de estrofe no fim da página"
+                    {/* ── BOTÃO DE EDITAR MÚSICA ── */}
+                    <button 
+                        onClick={() => (isEditing ? exitEditMode() : enterEditMode())}
+                        className={`px-3.5 py-2 rounded-xl transition-all text-xs font-black uppercase tracking-wider flex items-center gap-1.5 active:scale-95 shadow-sm ${
+                            isEditing 
+                                ? 'bg-gradient-to-r from-amber-400 to-amber-500 text-slate-950 border border-amber-300 ring-2 ring-amber-400/40 shadow-amber-500/30' 
+                                : 'bg-white/10 hover:bg-white/20 text-slate-200 border border-white/10'
+                        }`}
+                        title={isEditing ? 'Concluir e sair da edição (Esc)' : 'Editar letra — Enter: nova linha · Ctrl+Enter: nova estrofe'}
                     >
-                        Estrofes
+                        {isEditing ? (
+                            <>
+                                <Check size={15} weight="bold" />
+                                <span>Concluir</span>
+                            </>
+                        ) : (
+                            <>
+                                <PencilSimple size={15} weight="bold" className="text-amber-400" />
+                                <span>Editar</span>
+                            </>
+                        )}
                     </button>
 
-                    {/* Controles de Estilo e Edição */}
-                    <div className="hidden lg:flex items-center gap-1">
-                        <button 
-                            onClick={() => (isEditing ? exitEditMode() : enterEditMode())}
-                            className={`px-4 py-2 rounded-xl transition-all text-sm font-bold tracking-wider uppercase flex items-center gap-2 ${isEditing ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20' : 'bg-white/10 text-slate-300 hover:bg-white/20'}`}
-                            title={isEditing ? 'Sair da edição (Esc)' : 'Editar letra — Enter: nova linha · Ctrl+Enter: nova estrofe'}
-                        >
-                            {isEditing ? 'Sair do Modo Edição' : 'Editar'}
-                        </button>
-                        
-                        <div className="w-px h-6 bg-white/10 mx-1" />
+                    {/* Controles de Formatação (Fonte, Colunas, Estrofes) */}
+                    <div className="hidden lg:flex items-center gap-1 bg-white/5 rounded-xl p-1 border border-white/10">
+                        {/* Ajuste de Fonte */}
+                        <div className="flex items-center gap-1 px-1">
+                            <button 
+                                onClick={() => setFontSize(prev => Math.max(0.8, prev - 0.2))} 
+                                className="p-1.5 hover:bg-white/10 rounded-lg transition-colors text-slate-400 hover:text-white"
+                                title="Diminuir Fonte"
+                            >
+                                <Minus size={14} weight="bold" />
+                            </button>
+                            <span className="text-xs font-bold text-slate-300 min-w-[32px] text-center">
+                                {fontSize.toFixed(1)}x
+                            </span>
+                            <button 
+                                onClick={() => setFontSize(prev => Math.min(4, prev + 0.2))} 
+                                className="p-1.5 hover:bg-white/10 rounded-lg transition-colors text-slate-400 hover:text-white"
+                                title="Aumentar Fonte"
+                            >
+                                <Plus size={14} weight="bold" />
+                            </button>
+                        </div>
 
-                        <button onClick={() => setFontSize(prev => Math.max(0.8, prev - 0.2))} className="p-2.5 hover:bg-white/10 rounded-xl"><TextT size={20} /></button>
-                        <button onClick={() => setFontSize(prev => Math.min(4, prev + 0.2))} className="p-2.5 hover:bg-white/10 rounded-xl"><TextT size={26} weight="bold" /></button>
-                        <div className="w-px h-6 bg-white/10 mx-1" />
+                        <div className="w-px h-5 bg-white/10 mx-0.5" />
+
+                        {/* Alternar Colunas */}
                         <button 
                             onClick={() => {
                                 const nextCols = activeCols === 2 ? 1 : 2;
                                 setStageColumnOverride(nextCols);
                             }}
-                            className={`p-2.5 rounded-xl transition-all ${activeCols === 2 ? 'bg-indigo-600 text-white' : 'hover:bg-white/10'}`}
+                            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                                activeCols === 2 
+                                    ? 'bg-indigo-600 text-white shadow-xs' 
+                                    : 'text-slate-400 hover:text-white hover:bg-white/10'
+                            }`}
+                            title="Alternar 1 ou 2 Colunas"
                         >
-                            <Columns size={22} />
+                            <Columns size={15} weight={activeCols === 2 ? "fill" : "regular"} />
+                            <span>{activeCols} Col</span>
                         </button>
-                        <button 
-                            onClick={toggleFullscreen}
-                            className="p-2.5 hover:bg-white/10 rounded-xl transition-all text-slate-400 hover:text-white"
-                            title="Tela Cheia (F11)"
+
+                        {/* Manter Estrofes Juntas */}
+                        <button
+                            onClick={() => setKeepStanzaTogether((prev) => !prev)}
+                            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                                keepStanzaTogether 
+                                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' 
+                                    : 'text-slate-400 hover:text-white hover:bg-white/10'
+                            }`}
+                            title="Manter estrofes unidas sem quebra"
                         >
-                            <ArrowsOut size={22} weight="bold" />
+                            <div className={`w-1.5 h-1.5 rounded-full ${keepStanzaTogether ? 'bg-emerald-400' : 'bg-slate-600'}`} />
+                            <span>Estrofes</span>
                         </button>
                     </div>
 
+                    {/* Busca Rápida (CTRL+F) */}
+                    <button 
+                        onClick={() => setIsSearchOpen(!isSearchOpen)}
+                        className={`p-2.5 rounded-xl transition-all ${
+                            isSearchOpen ? 'bg-indigo-600 text-white' : 'hover:bg-white/10 text-slate-400 hover:text-white'
+                        }`}
+                        title="Buscar Música no Palco (Ctrl + F)"
+                    >
+                        <MagnifyingGlass size={20} weight="bold" />
+                    </button>
+
+                    {/* Tela Cheia */}
+                    <button 
+                        onClick={toggleFullscreen}
+                        className="p-2.5 hover:bg-white/10 rounded-xl transition-all text-slate-400 hover:text-white"
+                        title="Tela Cheia (F11)"
+                    >
+                        <ArrowsOut size={20} weight="bold" />
+                    </button>
+
+                    {/* Fechar Palco */}
                     <button 
                         onClick={onClose}
-                        className="p-2.5 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-xl transition-all border border-red-500/20 active:scale-95"
+                        className="p-2.5 bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white rounded-xl transition-all border border-red-500/20 active:scale-95"
+                        title="Sair do Palco (Esc)"
                     >
-                        <XCircle size={26} weight="bold" />
+                        <X size={20} weight="bold" />
                     </button>
                 </div>
             </header>
+
+            {/* Banner Flutuante de Ajuda quando em Modo Edição */}
+            {isEditing && (
+                <div className="bg-amber-500/15 border-b border-amber-500/30 py-2 px-6 flex items-center justify-between text-amber-300 text-xs font-medium z-10 animate-in slide-in-from-top-1">
+                    <div className="flex items-center gap-2">
+                        <PencilSimple size={16} weight="bold" className="text-amber-400" />
+                        <span><strong>Modo de Edição Ativo:</strong> As colunas enchem em ordem (esquerda → direita). Linhas “soltas” são estrofes separadas — use <strong>Backspace</strong> no início da linha para juntar à anterior.</span>
+                    </div>
+                    <div className="flex items-center gap-4 text-[11px] text-amber-400/80">
+                        <span><strong>Enter:</strong> nova linha</span>
+                        <span><strong>Ctrl+Enter:</strong> nova estrofe</span>
+                        <span><strong>Backspace</strong> (início da linha): juntar</span>
+                        <button 
+                            onClick={exitEditMode}
+                            className="font-black text-slate-950 bg-amber-400 hover:bg-amber-300 px-3 py-1 rounded-lg transition-colors shadow-sm"
+                        >
+                            Concluir
+                        </button>
+                    </div>
+                </div>
+            )}
 
             {/* Container do Palco (Área restante) */}
             <div className="flex-1 relative overflow-hidden">
@@ -974,8 +1164,9 @@ const StageMode = ({ onClose }) => {
                     margin-bottom: 1.6em;
                     position: relative;
                 }
+                /* Em 1 coluna: evita cortar estrofe entre páginas do scroll. Em 2 colunas a classe não é aplicada — o texto preenche col. 1 e depois col. 2. */
                 .keep-stanza-together {
-                    break-inside: avoid-column;
+                    break-inside: avoid;
                     -webkit-column-break-inside: avoid;
                     page-break-inside: avoid;
                 }
