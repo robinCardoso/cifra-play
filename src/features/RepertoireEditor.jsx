@@ -18,6 +18,8 @@ import SearchableSelect from '../components/SearchableSelect';
 
 const MOBILE_BOTTOM_RESERVE = 'pb-[max(1rem,env(safe-area-inset-bottom,0px))]';
 
+const REPERTOIRE_DND_GROUP = 'cifra-repertoire-dnd';
+
 const RepertoireEditor = () => {
     const isMobile = useIsMobile();
     const { 
@@ -43,6 +45,11 @@ const RepertoireEditor = () => {
         });
     }, [songLibrary, searchTerm, styleFilter, activeRepertoire]);
 
+    const librarySortableList = useMemo(
+        () => librarySongs.map((song) => ({ ...song, uniqueKey: `lib-${song.id}` })),
+        [librarySongs]
+    );
+
     if (!activeRepertoire) return null;
 
     const currentSequence = activeRepertoire.songIds.map((id, index) => {
@@ -51,7 +58,13 @@ const RepertoireEditor = () => {
     });
 
     const handleSort = (newList) => {
-        const newIds = newList.map(item => item.id);
+        const seen = new Set();
+        const newIds = [];
+        for (const item of newList) {
+            if (!item?.id || seen.has(item.id)) continue;
+            seen.add(item.id);
+            newIds.push(item.id);
+        }
         updateRepertoire(activeRepertoire.id, { songIds: newIds });
     };
 
@@ -82,7 +95,10 @@ const RepertoireEditor = () => {
 
     const emptySetlistMessage = isMobile
         ? 'Nenhuma música na setlist. Toque em «Adicionar» para escolher da biblioteca.'
-        : 'Use o painel ao lado para adicionar músicas à sua setlist.';
+        : 'Arraste músicas da biblioteca para cá ou use o botão ← em cada música.';
+
+    const desktopDndSetlistGroup = { name: REPERTOIRE_DND_GROUP, pull: true, put: true };
+    const desktopDndLibraryGroup = { name: REPERTOIRE_DND_GROUP, pull: 'clone', put: false };
 
     const libraryFilters = (
         <div className={`flex gap-2 ${isMobile ? 'flex-col' : 'flex-row'}`}>
@@ -112,25 +128,30 @@ const RepertoireEditor = () => {
         <div className={`flex-1 flex flex-col bg-slate-800 rounded-2xl overflow-hidden border border-slate-700 shadow-xl min-h-0 ${isMobile ? '' : 'lg:min-h-0'}`}>
             <div className="p-3 md:p-4 border-b border-slate-700 bg-slate-800/80 flex-shrink-0">
                 <h2 className="text-base md:text-lg font-bold">Sequência das Músicas ({currentSequence.length})</h2>
-                {isMobile && (
+                {isMobile ? (
                     <p className="text-[11px] text-slate-500 mt-1">Segure o ícone ⋮ e arraste para reordenar.</p>
+                ) : (
+                    <p className="text-[11px] text-slate-500 mt-1">Arraste da biblioteca ou use ⋮ para reordenar a setlist.</p>
                 )}
             </div>
             
             <div className={`flex-1 overflow-y-auto p-3 md:p-4 ${MOBILE_BOTTOM_RESERVE}`}>
-                {currentSequence.length === 0 ? (
-                    <div className="h-full min-h-[120px] flex items-center justify-center border-2 border-dashed border-slate-600 rounded-xl text-slate-400 p-6 text-center text-sm">
-                        {emptySetlistMessage}
-                    </div>
-                ) : (
+                <div className="relative min-h-[160px]">
                     <ReactSortable 
                         list={currentSequence} 
                         setList={handleSort}
                         animation={200}
-                        className="flex flex-col gap-2"
+                        className={`flex flex-col gap-2 min-h-[160px] ${
+                            currentSequence.length === 0 ? 'rounded-xl border-2 border-dashed border-slate-600 p-2' : ''
+                        }`}
                         handle=".drag-handle"
                         delay={isMobile ? 150 : 0}
                         delayOnTouchOnly={isMobile}
+                        group={!isMobile ? desktopDndSetlistGroup : undefined}
+                        filter=".no-drag"
+                        preventOnFilter={false}
+                        ghostClass="repertoire-dnd-ghost"
+                        chosenClass="repertoire-dnd-chosen"
                     >
                         {currentSequence.map((song, index) => (
                             <div key={song.uniqueKey} className="group flex items-center bg-slate-900/50 hover:bg-slate-900 p-2.5 md:p-3 rounded-xl border border-transparent hover:border-slate-600 transition-colors gap-2 md:gap-3">
@@ -141,7 +162,7 @@ const RepertoireEditor = () => {
                                     type="button"
                                     title="Editar cifra"
                                     onClick={() => setActiveSongId(song.id)}
-                                    className="text-slate-500 hover:text-indigo-400 p-2 -m-1 rounded-lg hover:bg-slate-800"
+                                    className="no-drag text-slate-500 hover:text-indigo-400 p-2 -m-1 rounded-lg hover:bg-slate-800"
                                 >
                                     <PencilSimple size={20} />
                                 </button>
@@ -152,10 +173,10 @@ const RepertoireEditor = () => {
                                 <div className="flex items-center gap-0.5 flex-shrink-0">
                                     {!isMobile && (
                                         <>
-                                            <button type="button" onClick={() => moveUp(index)} className="text-slate-400 hover:text-white p-2 hover:bg-slate-700 rounded-lg" title="Subir">
+                                            <button type="button" onClick={() => moveUp(index)} className="no-drag text-slate-400 hover:text-white p-2 hover:bg-slate-700 rounded-lg" title="Subir">
                                                 <ArrowUp size={18} />
                                             </button>
-                                            <button type="button" onClick={() => moveDown(index)} className="text-slate-400 hover:text-white p-2 hover:bg-slate-700 rounded-lg" title="Descer">
+                                            <button type="button" onClick={() => moveDown(index)} className="no-drag text-slate-400 hover:text-white p-2 hover:bg-slate-700 rounded-lg" title="Descer">
                                                 <ArrowDown size={18} />
                                             </button>
                                         </>
@@ -163,7 +184,7 @@ const RepertoireEditor = () => {
                                     <button 
                                         type="button"
                                         onClick={() => handleRemoveSong(index)} 
-                                        className="text-red-400 hover:text-red-200 p-2.5 hover:bg-red-500/20 rounded-lg min-w-[44px] min-h-[44px] flex items-center justify-center" 
+                                        className="no-drag text-red-400 hover:text-red-200 p-2.5 hover:bg-red-500/20 rounded-lg min-w-[44px] min-h-[44px] flex items-center justify-center" 
                                         title="Remover da setlist"
                                         aria-label="Remover da setlist"
                                     >
@@ -173,7 +194,12 @@ const RepertoireEditor = () => {
                             </div>
                         ))}
                     </ReactSortable>
-                )}
+                    {currentSequence.length === 0 && (
+                        <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6 text-center text-sm text-slate-400">
+                            {emptySetlistMessage}
+                        </div>
+                    )}
+                </div>
             </div>
         </div>
     );
@@ -185,24 +211,66 @@ const RepertoireEditor = () => {
                 {libraryFilters}
             </div>
 
-            <div className={`flex-1 overflow-y-auto p-3 md:p-4 flex flex-col gap-2 ${MOBILE_BOTTOM_RESERVE}`}>
-                {librarySongs.map(song => (
-                    <div key={song.id} className="group flex items-center bg-slate-900/40 hover:bg-slate-900 p-2.5 md:p-3 rounded-xl border border-transparent hover:border-slate-600 transition-colors gap-3">
-                        <button 
-                            type="button"
-                            onClick={() => handleAddSong(song.id)}
-                            className="text-indigo-400 hover:text-white bg-indigo-500/10 hover:bg-indigo-500 rounded-xl transition-colors flex items-center justify-center flex-shrink-0 min-w-[44px] min-h-[44px]"
-                            title="Adicionar à setlist"
-                            aria-label={`Adicionar ${song.title}`}
-                        >
-                            {isMobile ? <Plus size={22} weight="bold" /> : <CaretLeft size={20} weight="bold" />}
-                        </button>
-                        <div className="flex-1 min-w-0 flex flex-col justify-center text-left">
-                            <h3 className="text-sm font-bold truncate text-slate-200">{song.title}</h3>
-                            <p className="text-[10px] text-slate-400 truncate tracking-wide">{song.artist}</p>
-                        </div>
+            <div className={`flex-1 overflow-y-auto p-3 md:p-4 ${MOBILE_BOTTOM_RESERVE}`}>
+                {!isMobile && (
+                    <p className="text-[11px] text-slate-500 mb-2 px-1">Arraste a música (ou o cartão) para a setlist à esquerda.</p>
+                )}
+                {isMobile ? (
+                    <div className="flex flex-col gap-2">
+                        {librarySongs.map((song) => (
+                            <div key={song.id} className="group flex items-center bg-slate-900/40 hover:bg-slate-900 p-2.5 md:p-3 rounded-xl border border-transparent hover:border-slate-600 transition-colors gap-3">
+                                <button 
+                                    type="button"
+                                    onClick={() => handleAddSong(song.id)}
+                                    className="text-indigo-400 hover:text-white bg-indigo-500/10 hover:bg-indigo-500 rounded-xl transition-colors flex items-center justify-center flex-shrink-0 min-w-[44px] min-h-[44px]"
+                                    title="Adicionar à setlist"
+                                    aria-label={`Adicionar ${song.title}`}
+                                >
+                                    <Plus size={22} weight="bold" />
+                                </button>
+                                <div className="flex-1 min-w-0 flex flex-col justify-center text-left">
+                                    <h3 className="text-sm font-bold truncate text-slate-200">{song.title}</h3>
+                                    <p className="text-[10px] text-slate-400 truncate tracking-wide">{song.artist}</p>
+                                </div>
+                            </div>
+                        ))}
                     </div>
-                ))}
+                ) : (
+                    <ReactSortable
+                        list={librarySortableList}
+                        setList={() => {}}
+                        animation={200}
+                        sort={false}
+                        group={desktopDndLibraryGroup}
+                        className="flex flex-col gap-2"
+                        filter=".no-drag"
+                        preventOnFilter={false}
+                        ghostClass="repertoire-dnd-ghost"
+                        chosenClass="repertoire-dnd-chosen"
+                    >
+                        {librarySortableList.map((song) => (
+                            <div
+                                key={song.uniqueKey}
+                                className="library-song-item group flex items-center bg-slate-900/40 hover:bg-slate-900 p-2.5 md:p-3 rounded-xl border border-transparent hover:border-indigo-500/40 transition-colors gap-3 cursor-grab active:cursor-grabbing"
+                            >
+                                <button 
+                                    type="button"
+                                    onClick={() => handleAddSong(song.id)}
+                                    className="no-drag text-indigo-400 hover:text-white bg-indigo-500/10 hover:bg-indigo-500 rounded-xl transition-colors flex items-center justify-center flex-shrink-0 min-w-[44px] min-h-[44px]"
+                                    title="Adicionar à setlist"
+                                    aria-label={`Adicionar ${song.title}`}
+                                >
+                                    <CaretLeft size={20} weight="bold" />
+                                </button>
+                                <div className="flex-1 min-w-0 flex flex-col justify-center text-left select-none">
+                                    <h3 className="text-sm font-bold truncate text-slate-200">{song.title}</h3>
+                                    <p className="text-[10px] text-slate-400 truncate tracking-wide">{song.artist}</p>
+                                </div>
+                                <DotsSixVertical size={20} weight="bold" className="text-slate-600 flex-shrink-0 opacity-60 group-hover:opacity-100" aria-hidden />
+                            </div>
+                        ))}
+                    </ReactSortable>
+                )}
                 {librarySongs.length === 0 && (
                     <p className="text-center text-slate-500 text-sm mt-8 px-4">Nenhuma música encontrada no filtro.</p>
                 )}
@@ -285,6 +353,11 @@ const RepertoireEditor = () => {
                     </>
                 )}
             </div>
+
+            <style dangerouslySetInnerHTML={{ __html: `
+                .repertoire-dnd-ghost { opacity: 0.45; background: rgb(99 102 241 / 0.15) !important; }
+                .repertoire-dnd-chosen { box-shadow: 0 0 0 2px rgb(99 102 241 / 0.5); }
+            `}} />
         </div>
     );
 };

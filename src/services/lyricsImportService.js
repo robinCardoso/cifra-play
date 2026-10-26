@@ -3,6 +3,9 @@
  * Suporta: Letras.mus.br e Cifra Club
  */
 
+export const IMPORT_FETCH_TIMEOUT_MS = 25_000;
+const MAX_PARSE_CHARS = 200_000;
+
 /**
  * Normaliza e limpa as estrofes para respeitar a convenção do Cifra&Play:
  * - Estrofes separadas por linha dupla (\n\n)
@@ -47,11 +50,15 @@ export function formatLyricsToCifraPlay(rawText) {
 export function convertMarkdownChordsToCifraPlay(text) {
   if (!text) return '';
 
-  // Substitui **Acorde** por [Acorde]
-  let converted = text.replace(/\*\*([A-G][b#]?(?:m|maj|min|dim|aug|sus|[0-9]|\+|M|-)*\/?(?:[A-G][b#]?)?)\*\*/g, '[$1]');
-  
-  // Limpa caracteres zero-width
-  converted = converted.replace(/[\u200B-\u200D\uFEFF]/g, '');
+  // Linha a linha evita regex pesada em respostas enormes do proxy
+  const converted = text
+    .split(/\r?\n/)
+    .map((line) =>
+      line
+        .replace(/\*\*([A-G][b#]?(?:m|maj|min|dim|aug|sus|[0-9]|\+|M|-)*\/?(?:[A-G][b#]?)?)\*\*/g, '[$1]')
+        .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    )
+    .join('\n');
 
   return formatLyricsToCifraPlay(converted);
 }
@@ -91,50 +98,26 @@ export function inferSongKey(lyrics) {
   return match ? match[1] : '';
 }
 
+function trimForParse(text) {
+  if (!text || text.length <= MAX_PARSE_CHARS) return text || '';
+  return text.slice(0, MAX_PARSE_CHARS);
+}
+
 /**
- * Busca e parseia letra ou cifra a partir de uma URL
+ * Parseia o corpo retornado pelo proxy Jina (após o fetch).
  */
-export async function fetchSongFromUrl(targetUrl) {
-  const url = targetUrl.trim();
-  if (!url) {
-    throw new Error('Por favor, informe um link válido.');
-  }
+export function parseSongFromJinaResponse(rawText, sourceUrl) {
+  const isLetras = /letras\.mus\.br/i.test(sourceUrl);
+  const isCifraClub = /cifraclub\.com\.br/i.test(sourceUrl);
 
-  const isLetras = /letras\.mus\.br/i.test(url);
-  const isCifraClub = /cifraclub\.com\.br/i.test(url);
-
-  if (!isLetras && !isCifraClub) {
-    throw new Error('No momento, aceitamos links do Letras.mus.br ou CifraClub.com.br');
-  }
-
-  // Define os parâmetros de extração para o proxy Jina
-  const jinaUrl = `https://r.jina.ai/${encodeURIComponent(url)}`;
-  const headers = {};
-
-  if (isLetras) {
-    headers['X-Target-Selector'] = '.lyric-original';
-  } else if (isCifraClub) {
-    headers['X-Target-Selector'] = 'pre';
-  }
-
-  const response = await fetch(jinaUrl, { headers });
-  if (!response.ok) {
-    throw new Error(`Falha ao obter os dados da música (${response.status} ${response.statusText}). Verifique se o link está correto.`);
-  }
-
-  const rawText = await response.text();
-
-  // Extrai o título e artista do cabeçalho
   const titleMatch = rawText.match(/^Title:\s*([^\r\n]+)/im);
   const headerInfo = parseHeaderTitle(titleMatch ? titleMatch[1] : '');
 
-  // Pega o conteúdo markdown após "Markdown Content:"
   const contentIndex = rawText.indexOf('Markdown Content:');
   let content = contentIndex !== -1 ? rawText.slice(contentIndex + 'Markdown Content:'.length) : rawText;
+  content = trimForParse(content);
 
-  // Remove trechos finais indesejados (como menus, rodapés ou seções de acordes soltos do Cifra Club)
   if (isLetras) {
-    // Se por acaso vier sem seletor CSS, remove seções extras
     const cutPos = content.search(/\n\*\s*\*\s*\*|\n###\s+/);
     if (cutPos !== -1) {
       content = content.slice(0, cutPos);
@@ -161,6 +144,73 @@ export async function fetchSongFromUrl(targetUrl) {
     lyrics: formattedLyrics,
     key: inferredKey,
     style: '',
-    sourceUrl: url
+    sourceUrl: sourceUrl.trim(),
   };
+}
+
+/**
+ * Busca letra ou cifra a partir de uma URL (rede + parse).
+ * @param {object} [options]
+ * @param {AbortSignal} [options.signal] — cancelamento (fechar modal / nova busca)
+ */
+export async function fetchSongFromUrl(targetUrl, options = {}) {
+  const { signal: externalSignal } = options;
+  const url = targetUrl.trim();
+  if (!url) {
+    throw new Error('Por favor, informe um link válido.');
+  }
+
+  const isLetras = /letras\.mus\.br/i.test(url);
+  const isCifraClub = /cifraclub\.com\.br/i.test(url);
+
+  if (!isLetras && !isCifraClub) {
+    throw new Error('No momento, aceitamos links do Letras.mus.br ou CifraClub.com.br');
+  }
+
+  const jinaUrl = `https://r.jina.ai/${encodeURIComponent(url)}`;
+  const headers = {};
+
+  if (isLetras) {
+    headers['X-Target-Selector'] = '.lyric-original';
+  } else if (isCifraClub) {
+    headers['X-Target-Selector'] = 'pre';
+  }
+
+  const timeoutController = new AbortController();
+  const timeoutId = setTimeout(() => timeoutController.abort(), IMPORT_FETCH_TIMEOUT_MS);
+
+  const onExternalAbort = () => timeoutController.abort();
+  if (externalSignal) {
+    if (externalSignal.aborted) {
+      clearTimeout(timeoutId);
+      throw new Error('Busca cancelada.');
+    }
+    externalSignal.addEventListener('abort', onExternalAbort);
+  }
+
+  try {
+    const response = await fetch(jinaUrl, { headers, signal: timeoutController.signal });
+    if (!response.ok) {
+      throw new Error(`Falha ao obter os dados da música (${response.status} ${response.statusText}). Verifique se o link está correto.`);
+    }
+
+    const rawText = trimForParse(await response.text());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    return parseSongFromJinaResponse(rawText, url);
+  } catch (err) {
+    if (timeoutController.signal.aborted) {
+      if (externalSignal?.aborted) {
+        throw new Error('Busca cancelada.');
+      }
+      throw new Error(`A busca demorou mais de ${IMPORT_FETCH_TIMEOUT_MS / 1000} segundos. Verifique sua internet ou tente outro link.`);
+    }
+    if (err?.name === 'TypeError' && /fetch/i.test(String(err.message))) {
+      throw new Error('Não foi possível conectar ao serviço de importação. Verifique sua internet.');
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
+    externalSignal?.removeEventListener('abort', onExternalAbort);
+  }
 }

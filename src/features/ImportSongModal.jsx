@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useLibrary } from '../store/LibraryContext';
-import { fetchSongFromUrl } from '../services/lyricsImportService';
+import { fetchSongFromUrl, IMPORT_FETCH_TIMEOUT_MS } from '../services/lyricsImportService';
+import useIsMobile from '../hooks/useIsMobile';
 import { 
   X, 
   LinkSimpleHorizontal, 
@@ -24,37 +25,69 @@ const ImportSongModal = () => {
     setArtists
   } = useLibrary();
 
+  const isMobile = useIsMobile();
+  const fetchAbortRef = useRef(null);
+
   const [url, setUrl] = useState('');
   const [loading, setLoading] = useState(false);
+  const [loadingPhase, setLoadingPhase] = useState('fetch');
   const [error, setError] = useState(null);
-  
-  // Dados extraídos para pré-visualização e edição
   const [previewData, setPreviewData] = useState(null);
+
+  useEffect(() => {
+    if (!isImportModalOpen) {
+      fetchAbortRef.current?.abort();
+      fetchAbortRef.current = null;
+    }
+  }, [isImportModalOpen]);
+
+  useEffect(() => () => fetchAbortRef.current?.abort(), []);
 
   if (!isImportModalOpen) return null;
 
+  const cancelFetch = () => {
+    fetchAbortRef.current?.abort();
+    fetchAbortRef.current = null;
+    setLoading(false);
+    setLoadingPhase('fetch');
+  };
+
   const handleClose = () => {
+    cancelFetch();
     setIsImportModalOpen(false);
     setUrl('');
     setError(null);
     setPreviewData(null);
-    setLoading(false);
   };
 
   const handleFetch = async (e) => {
     if (e) e.preventDefault();
     if (!url.trim()) return;
 
+    fetchAbortRef.current?.abort();
+    const abortController = new AbortController();
+    fetchAbortRef.current = abortController;
+
     setLoading(true);
+    setLoadingPhase('fetch');
     setError(null);
+    setPreviewData(null);
 
     try {
-      const data = await fetchSongFromUrl(url);
+      const data = await fetchSongFromUrl(url, { signal: abortController.signal });
+      if (abortController.signal.aborted) return;
+      setLoadingPhase('parse');
       setPreviewData(data);
     } catch (err) {
-      setError(err.message || 'Erro ao carregar link.');
+      if (!abortController.signal.aborted) {
+        setError(err.message || 'Erro ao carregar link.');
+      }
     } finally {
+      if (fetchAbortRef.current === abortController) {
+        fetchAbortRef.current = null;
+      }
       setLoading(false);
+      setLoadingPhase('fetch');
     }
   };
 
@@ -85,7 +118,11 @@ const ImportSongModal = () => {
   };
 
   return (
-    <div className="fixed inset-0 z-[500] bg-black/75 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 md:p-6 animate-in fade-in duration-200">
+    <div
+      className={`fixed inset-0 z-[500] flex items-center justify-center p-2 sm:p-4 md:p-6 animate-in fade-in duration-200 ${
+        isMobile ? 'bg-black/85' : 'bg-black/75 backdrop-blur-sm'
+      }`}
+    >
       <div className="bg-white dark:bg-slate-900 w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[calc(100dvh-1rem)] md:max-h-[90vh] border border-slate-200 dark:border-slate-800 animate-in zoom-in-95 duration-200">
         
         {/* Cabeçalho */}
@@ -139,7 +176,7 @@ const ImportSongModal = () => {
                 {loading ? (
                   <>
                     <ArrowClockwise size={18} className="animate-spin" />
-                    <span>Buscando...</span>
+                    <span className="hidden sm:inline">Buscando...</span>
                   </>
                 ) : (
                   <span>Buscar</span>
@@ -147,6 +184,29 @@ const ImportSongModal = () => {
               </button>
             </div>
           </form>
+
+          {loading && (
+            <div className="p-3.5 rounded-2xl bg-indigo-500/10 border border-indigo-500/25 text-indigo-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-xs animate-in fade-in">
+              <div className="flex items-start gap-3">
+                <ArrowClockwise size={20} className="animate-spin flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-bold text-indigo-100">
+                    {loadingPhase === 'parse' ? 'Formatando letra…' : 'Buscando no site…'}
+                  </p>
+                  <p className="text-indigo-300/90 mt-0.5">
+                    Pode levar até {IMPORT_FETCH_TIMEOUT_MS / 1000} segundos. O proxy consulta Letras ou Cifra Club.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={cancelFetch}
+                className="flex-shrink-0 px-3 py-2 rounded-xl font-bold text-slate-900 bg-white/90 hover:bg-white transition-colors"
+              >
+                Cancelar busca
+              </button>
+            </div>
+          )}
 
           {/* Mensagem de Erro */}
           {error && (
